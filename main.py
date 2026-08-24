@@ -1,7 +1,7 @@
 from datetime import datetime
 
 # Pobieranie aktualnej daty i hgodziny
-current_datetime = datetime.now()
+curreynt_datetime = datetime.now()
 
 # Wyświetlenie daty i godziny
 print(f"Aktualna data i godzina: {current_datetime}")
