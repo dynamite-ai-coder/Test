@@ -1,0 +1,660 @@
+You are an expert Python/AI engineer. Modify/build the project so it becomes a complete Virtual AI system for Termux on Android.
+
+1. Main objective
+
+Create a web-based Virtual AI that combines 5 independent real AI models hosted by Groq into one intelligent virtual model.
+
+Each AI model must use a different Groq API key:
+
+- "GROQ_API_KEY_1"
+- "GROQ_API_KEY_2"
+- "GROQ_API_KEY_3"
+- "GROQ_API_KEY_4"
+- "GROQ_API_KEY_5"
+
+The application must run locally on Termux and expose the web interface at:
+
+"http://127.0.0.1:22200"
+
+Do not create fake/mock AI models. Every model must make a real API request to Groq.
+
+---
+
+2. Architecture
+
+Implement the system as a multi-agent / multi-model architecture.
+
+The Virtual AI should work approximately like this:
+
+                         USER
+                           │
+                           ▼
+                  ┌─────────────────┐
+                  │   WEB CHAT UI   │
+                  │ 127.0.0.1:22200 │
+                  └────────┬────────┘
+                           │
+                           ▼
+                 ┌───────────────────┐
+                 │   ORCHESTRATOR    │
+                 │   Virtual AI      │
+                 └─────────┬─────────┘
+                           │
+             ┌─────────────┼─────────────┐
+             │             │             │
+             ▼             ▼             ▼
+        ┌─────────┐   ┌─────────┐   ┌─────────┐
+        │ MODEL 1 │   │ MODEL 2 │   │ MODEL 3 │
+        │ Groq    │   │ Groq    │   │ Groq    │
+        │ API #1  │   │ API #2  │   │ API #3  │
+        └─────────┘   └─────────┘   └─────────┘
+             │             │             │
+             └─────────────┼─────────────┘
+                           │
+                    ┌──────┴──────┐
+                    │             │
+                    ▼             ▼
+              ┌─────────┐   ┌─────────┐
+              │ MODEL 4 │   │ MODEL 5 │
+              │ Groq    │   │ Groq    │
+              │ API #4  │   │ API #5  │
+              └─────────┘   └─────────┘
+                    │             │
+                    └──────┬──────┘
+                           │
+                           ▼
+                 ┌───────────────────┐
+                 │  SYNTHESIS /      │
+                 │  DECISION LAYER   │
+                 └─────────┬─────────┘
+                           │
+                           ▼
+                    FINAL ANSWER
+                           │
+                           ▼
+                        USER
+
+The five models should not simply generate five unrelated answers.
+
+They should operate as a coordinated virtual intelligence.
+
+---
+
+3. Model roles
+
+Give each model a different specialization.
+
+For example:
+
+Model 1 — Reasoning Agent
+
+Responsible for:
+
+- deep reasoning
+- decomposition of problems
+- identifying assumptions
+- finding logical solutions
+
+Model 2 — Research Agent
+
+Responsible for:
+
+- gathering information
+- analyzing external information
+- identifying useful facts
+- using browser tools when necessary
+
+Model 3 — Critical Agent
+
+Responsible for:
+
+- challenging the other agents
+- detecting errors
+- identifying hallucinations
+- checking contradictions
+- proposing corrections
+
+Model 4 — Engineering Agent
+
+Responsible for:
+
+- technical solutions
+- programming
+- architecture
+- implementation details
+- debugging
+
+Model 5 — Strategic Agent
+
+Responsible for:
+
+- comparing the proposed solutions
+- selecting the strongest approach
+- optimizing the final result
+- making the final recommendation
+
+The roles must be configurable in the code.
+
+---
+
+4. Model configuration
+
+Do not hard-code API keys.
+
+Use ".env".
+
+Example:
+
+GROQ_API_KEY_1=gsk_xxxxxxxxx
+GROQ_API_KEY_2=gsk_xxxxxxxxx
+GROQ_API_KEY_3=gsk_xxxxxxxxx
+GROQ_API_KEY_4=gsk_xxxxxxxxx
+GROQ_API_KEY_5=gsk_xxxxxxxxx
+
+MODEL_1=...
+MODEL_2=...
+MODEL_3=...
+MODEL_4=...
+MODEL_5=...
+
+SYNTHESIS_MODEL=...
+HOST=127.0.0.1
+PORT=22200
+
+The application must validate that all five API keys exist.
+
+Never expose API keys in:
+
+- HTML
+- JavaScript
+- browser responses
+- logs
+- frontend source code
+
+---
+
+5. Parallel execution
+
+The five Groq models should preferably process the user's request in parallel, not sequentially.
+
+Use asynchronous Python where appropriate.
+
+For example:
+
+USER QUESTION
+      │
+      ├──► MODEL 1
+      ├──► MODEL 2
+      ├──► MODEL 3
+      ├──► MODEL 4
+      └──► MODEL 5
+               │
+               ▼
+        COLLECT RESPONSES
+               │
+               ▼
+           SYNTHESIS
+
+Do not make the user wait unnecessarily for model 1 to finish before model 2 starts.
+
+Implement:
+
+- timeouts
+- exception handling
+- retries where appropriate
+- graceful handling of one failed API key
+- rate-limit handling
+
+If one model fails, the remaining models should still be able to produce an answer.
+
+---
+
+6. Synthesis layer
+
+The Virtual AI must combine the five responses.
+
+Do not simply concatenate the responses.
+
+Create a synthesis stage that receives:
+
+Original user request
+
++
+Model 1 response
+
++
+Model 2 response
+
++
+Model 3 response
+
++
+Model 4 response
+
++
+Model 5 response
+
+The synthesis agent should:
+
+1. Compare the responses.
+2. Identify agreements.
+3. Identify contradictions.
+4. Detect weak reasoning.
+5. Prefer well-supported conclusions.
+6. Use useful information from each model.
+7. Produce one coherent final answer.
+8. Avoid mentioning internal implementation unless appropriate.
+9. Never blindly trust one model.
+
+The final response displayed to the user should feel like it came from one Virtual AI, not five separate chatbots.
+
+---
+
+7. Browser-Use integration
+
+Integrate the official browser-use agent into the project.
+
+The browser agent must be a real component of the system, not a placeholder.
+
+Use a Groq model through the browser-use integration where supported.
+
+The architecture should allow the Virtual AI to decide when browser interaction is useful.
+
+For example:
+
+USER
+ │
+ ▼
+Virtual AI
+ │
+ ├── normal question ──────────────► Groq agents
+ │
+ └── web/browser task
+              │
+              ▼
+         browser-use
+              │
+              ▼
+        Browser Agent
+              │
+              ▼
+       Browser results
+              │
+              ▼
+       Virtual AI synthesis
+
+The browser agent should be able to perform tasks such as:
+
+- opening websites
+- navigating pages
+- clicking elements
+- entering text
+- reading page content
+- searching the web
+- extracting relevant information
+- completing multi-step browser tasks
+
+Do not implement a fake browser.
+
+---
+
+8. Browser GUI / live browser preview
+
+The web interface should be designed so that browser-use can eventually provide a live browser preview.
+
+Create a dedicated browser panel in the UI.
+
+Example layout:
+
+┌───────────────────────────────────────────────────────────┐
+│                 VIRTUAL AI                                │
+├───────────────────────────────┬───────────────────────────┤
+│                               │                           │
+│           CHAT                │      BROWSER              │
+│                               │                           │
+│ User:                         │   ┌───────────────────┐   │
+│ Find information about X      │   │                   │   │
+│                               │   │ Browser Preview   │   │
+│ Virtual AI:                   │   │                   │   │
+│ I found...                    │   │                   │   │
+│                               │   │                   │   │
+│                               │   └───────────────────┘   │
+│                               │                           │
+├───────────────────────────────┴───────────────────────────┤
+│ Message...                                  [SEND]        │
+└───────────────────────────────────────────────────────────┘
+
+If true live browser streaming is technically possible in Termux, implement it.
+
+If browser-use's browser cannot directly stream its GUI into the webpage, implement the cleanest possible architecture for browser screenshots/state updates and make the browser panel ready for real-time updates.
+
+Do not pretend that a screenshot is a live browser if it is not.
+
+---
+
+9. Web application
+
+Use a lightweight Python web framework suitable for Termux.
+
+Recommended:
+
+- FastAPI
+- Uvicorn
+- WebSocket support
+
+The server must listen specifically on:
+
+127.0.0.1:22200
+
+The application should provide at least:
+
+GET /
+POST /api/chat
+GET /api/status
+POST /api/browser
+WebSocket /ws
+
+Use WebSockets for streaming events when useful.
+
+---
+
+10. Chat interface
+
+Create a modern responsive interface that works well on Android.
+
+Requirements:
+
+- dark modern UI
+- chat messages
+- user/AI distinction
+- typing/loading indicator
+- streaming response support
+- Enter to send
+- multiline input with Shift+Enter
+- clear chat button
+- browser panel
+- model status panel
+- mobile responsive design
+
+Show model activity such as:
+
+● Model 1 — Reasoning       thinking...
+● Model 2 — Research        searching...
+● Model 3 — Critical        analyzing...
+● Model 4 — Engineering     ready
+● Model 5 — Strategy        analyzing...
+
+After completion:
+
+✓ Model 1
+✓ Model 2
+✓ Model 3
+✓ Model 4
+✓ Model 5
+
+✓ Virtual AI synthesis complete
+
+---
+
+11. Transparency panel
+
+Add an optional expandable section:
+
+MODEL ANALYSIS
+
+where the user can see the five individual responses.
+
+The default view should still emphasize the final Virtual AI answer.
+
+For example:
+
+Virtual AI
+──────────
+Final synthesized answer...
+
+[ Show model analysis ]
+
+Model 1
+...
+
+Model 2
+...
+
+Model 3
+...
+
+Model 4
+...
+
+Model 5
+...
+
+---
+
+12. Conversation memory
+
+Implement conversation history.
+
+The Virtual AI should remember the current conversation during the running session.
+
+Structure the messages cleanly:
+
+{
+    "role": "user",
+    "content": "..."
+}
+
+and:
+
+{
+    "role": "assistant",
+    "content": "..."
+}
+
+Prevent the context from growing without limits.
+
+Implement reasonable history truncation or summarization.
+
+---
+
+13. Security
+
+Important:
+
+- Never expose Groq API keys to the browser.
+- Never log API keys.
+- Never return API keys through an API endpoint.
+- Validate all API input.
+- Add request size limits.
+- Handle malformed requests.
+- Keep the server bound to "127.0.0.1" by default.
+- Do not expose the service publicly unless explicitly configured.
+
+---
+
+14. Termux compatibility
+
+The project must be designed specifically for Android Termux.
+
+Avoid unnecessary heavy dependencies.
+
+Provide:
+
+setup_termux.sh
+run.sh
+stop.sh
+requirements.txt
+.env.example
+README.md
+
+The setup script should:
+
+1. Check Python.
+2. Check pip.
+3. Create a virtual environment if appropriate.
+4. Install dependencies.
+5. Install browser-use dependencies required by the selected browser backend.
+6. Create required directories.
+7. Create ".env" from ".env.example" if it does not exist.
+8. Print the final startup instructions.
+
+The run script should start:
+
+127.0.0.1:22200
+
+---
+
+15. Project structure
+
+Use a clean structure similar to:
+
+virtual-ai/
+│
+├── main.py
+├── virtual_ai.py
+├── groq_manager.py
+├── agents.py
+├── browser_agent.py
+├── config.py
+├── memory.py
+├── schemas.py
+│
+├── static/
+│   ├── index.html
+│   ├── app.js
+│   └── style.css
+│
+├── requirements.txt
+├── .env.example
+├── .gitignore
+│
+├── setup_termux.sh
+├── run.sh
+├── stop.sh
+│
+└── README.md
+
+You may improve this architecture if you have a better design.
+
+---
+
+16. Error handling
+
+The UI must clearly report problems.
+
+Examples:
+
+Model 1: API error
+Model 2: OK
+Model 3: rate limited
+Model 4: OK
+Model 5: OK
+
+Virtual AI:
+3/5 models responded successfully.
+
+Do not crash the entire server because one model fails.
+
+Also handle:
+
+- invalid API key
+- missing API key
+- Groq timeout
+- network failure
+- rate limits
+- browser-use failure
+- browser startup failure
+- malformed model response
+
+---
+
+17. Health/status endpoint
+
+Implement:
+
+GET /api/status
+
+Return safe information such as:
+
+{
+  "status": "ok",
+  "models": {
+    "model_1": "configured",
+    "model_2": "configured",
+    "model_3": "configured",
+    "model_4": "configured",
+    "model_5": "configured"
+  },
+  "browser_use": true
+}
+
+Never return the actual API keys.
+
+---
+
+18. Testing
+
+Before finishing:
+
+- test Python imports
+- test configuration loading
+- test missing API key handling
+- test API request validation
+- test the FastAPI application
+- test "/api/status"
+- test the five-agent orchestration
+- test failure of one model
+- test synthesis
+- test browser-use initialization
+- test Termux startup scripts
+- check for syntax errors
+- check for hard-coded secrets
+
+Create basic automated tests where practical.
+
+---
+
+19. Important implementation rule
+
+Do not just describe how to build this.
+
+Actually implement the complete project.
+
+Inspect the existing repository first if files already exist.
+
+Preserve useful existing functionality where possible.
+
+Modify existing files rather than unnecessarily creating duplicate implementations.
+
+After implementation, verify the final project and fix errors.
+
+---
+
+20. Final deliverable
+
+At the end, provide:
+
+1. Complete source code.
+2. All required configuration files.
+3. Termux installation scripts.
+4. Browser-use integration.
+5. Web interface.
+6. Five-Groq-model orchestration.
+7. Synthesis/decision layer.
+8. README with exact Termux commands.
+
+The final project must be directly usable after the user enters their five Groq API keys.
+
+The final startup command should ideally be:
+
+./run.sh
+
+and then the user should open:
+
+http://127.0.0.1:22200
+
+Do not leave TODO placeholders for core functionality.
+
+If a particular browser-use feature cannot technically work in Termux, detect this gracefully and implement the best compatible fallback rather than pretending it works.
+
+First inspect the existing project/repository, then implement the changes, run tests/checks, and fix any errors you find.
