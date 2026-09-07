@@ -1,0 +1,448 @@
+Build a complete Python Telegram automation system with two Telegram bots:
+
+1. A private control bot owned by the user.
+2. A Telegram automation client that communicates with another Telegram bot through the normal Telegram user/client API.
+
+IMPORTANT SECURITY REQUIREMENT:
+Do NOT implement credential harvesting, password searching, leaked-account searching, "login:password" collection, credential stuffing, authentication bypass, or processing of stolen credentials. The system must only process non-sensitive files/data that the user is authorized to access.
+
+GOAL
+
+The user should be able to control the automation entirely from their own Telegram bot.
+
+Example workflow:
+
+1. The user opens the control bot.
+2. The user sends a command such as:
+
+/add example1.com
+/add example2.com
+/add example3.com
+
+3. The system adds the URLs to a queue.
+4. A worker processes the queue sequentially.
+5. For each URL, the automation client sends a predefined search/request command to the authorized target bot.
+6. The target bot may respond with a confirmation/question and then provide a TXT file or another authorized result file.
+7. The worker downloads the returned file.
+8. The control bot sends the resulting file back to the user.
+9. The worker continues automatically with the next URL.
+10. The user can monitor status and control the queue at any time.
+
+ARCHITECTURE
+
+Implement the project using clean modular Python code.
+
+Recommended components:
+
+- "main.py" — application entry point
+- "config.py" — configuration management
+- "control_bot.py" — Telegram control bot
+- "telegram_client.py" — Telegram user/client automation
+- "queue_manager.py" — URL queue
+- "worker.py" — sequential processing worker
+- "storage.py" — local persistent state
+- "downloader.py" — file downloading
+- "logger.py" — structured logging
+- "requirements.txt"
+- ".env.example"
+- "README.md"
+
+TELEGRAM CONTROL BOT
+
+The control bot should provide an interactive interface with inline keyboard buttons.
+
+Main menu:
+
+[➕ Add URL]
+[📋 Queue]
+[▶️ Start]
+[⏸ Pause]
+[⏹ Stop]
+[📊 Status]
+[🗑 Clear Queue]
+[⚙️ Settings]
+
+Commands should also be supported:
+
+/start
+/add <url>
+/addlist
+/queue
+/startqueue
+/pause
+/resume
+/stop
+/status
+/clear
+/cancel
+
+URL INPUT
+
+Support both single URLs and multiple URLs.
+
+Example:
+
+/add https://example1.com
+
+Also support multiline input:
+
+https://example1.com
+https://example2.com
+https://example3.com
+
+The bot must validate and normalize URLs before adding them to the queue.
+
+QUEUE
+
+Use a persistent queue so that restarting the application does not lose pending URLs.
+
+Each queue item should contain:
+
+- unique ID
+- URL
+- status
+- creation timestamp
+- start timestamp
+- completion timestamp
+- retry count
+- result file path
+- error message, if any
+
+Possible states:
+
+PENDING
+PROCESSING
+WAITING_FOR_RESPONSE
+WAITING_FOR_FILE
+COMPLETED
+FAILED
+CANCELLED
+
+PROCESSING LOGIC
+
+Process only one URL at a time.
+
+Pseudo-flow:
+
+FOR each URL in queue:
+
+mark item as PROCESSING
+
+send the authorized search/request command
+wait for the target bot response
+
+if target bot asks the user to select an available result type:
+    select only the authorized, non-sensitive option
+
+wait for the resulting file
+
+validate the file
+
+download the file
+
+send the file through the control bot
+
+mark item as COMPLETED
+
+continue with next queue item
+
+The system must never process arbitrary Telegram messages as commands without validating their origin and conversation state.
+
+TELEGRAM CLIENT
+
+Use an appropriate Telegram client library such as Telethon.
+
+The client should:
+
+- log in using the user's own authorized Telegram account
+- identify the target bot by username
+- send requests to that bot
+- monitor replies
+- recognize the expected response
+- recognize file/document messages
+- download authorized result files
+- associate each file with the correct queue item
+
+Do not automate interactions with Telegram accounts or bots in a way that bypasses Telegram restrictions.
+
+CONVERSATION STATE MACHINE
+
+Implement a state machine for interaction with the target bot.
+
+Example:
+
+STATE_SEND_REQUEST
+↓
+STATE_WAITING_FOR_BOT
+↓
+STATE_EXPECTING_SELECTION
+↓
+STATE_SEND_SELECTION
+↓
+STATE_WAITING_FOR_FILE
+↓
+STATE_FILE_RECEIVED
+↓
+STATE_DOWNLOAD
+↓
+STATE_DELIVER_RESULT
+↓
+STATE_COMPLETED
+
+The state machine must support timeouts.
+
+Example:
+
+BOT_RESPONSE_TIMEOUT = 60 seconds
+FILE_TIMEOUT = 180 seconds
+
+If a timeout occurs:
+
+- log the problem
+- retry according to configuration
+- after the maximum retry count, mark the item FAILED
+- continue with the next queue item
+
+FILE HANDLING
+
+Only accept files from the expected authorized Telegram conversation.
+
+Validate:
+
+- sender
+- chat ID
+- message ID / conversation context
+- filename
+- file extension
+- maximum file size
+
+Allow TXT files and other explicitly configured safe file types.
+
+Create a separate directory for temporary downloads:
+
+"./downloads/"
+
+Create a separate directory for completed files:
+
+"./results/"
+
+Generate collision-safe filenames.
+
+Example:
+
+"example.com_20260908_153000.txt"
+
+CONTROL BOT STATUS
+
+When "/status" is used, return information such as:
+
+Queue size:
+Processing:
+Completed:
+Failed:
+Current URL:
+Progress:
+Worker state:
+
+Example:
+
+Queue size: 8
+Completed: 3
+Failed: 0
+Processing: example4.com
+Progress: 4 / 8
+Worker: RUNNING
+
+INLINE QUEUE VIEW
+
+Display queued URLs with buttons:
+
+[▶ Process]
+[❌ Remove]
+[↕ Move Up]
+[↕ Move Down]
+
+Do not allow unauthorized Telegram users to control the bot.
+
+AUTHORIZED USERS
+
+Implement an allowlist.
+
+Example configuration:
+
+"ALLOWED_USER_IDS=123456789,987654321"
+
+Only those Telegram user IDs may use the control interface.
+
+Any other user should receive:
+
+"Unauthorized user."
+
+CONFIGURATION
+
+Use environment variables instead of hardcoding secrets.
+
+".env.example" should contain placeholders such as:
+
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_API_ID=
+TELEGRAM_API_HASH=
+TARGET_BOT_USERNAME=
+ALLOWED_USER_IDS=
+DOWNLOAD_DIR=./downloads
+RESULT_DIR=./results
+MAX_RETRIES=3
+BOT_RESPONSE_TIMEOUT=60
+FILE_TIMEOUT=180
+
+Never commit real Telegram bot tokens, API hashes, session files, or other secrets to GitHub.
+
+IMPORTANT:
+The bot token supplied in the original request has been exposed in chat. Do not embed it in source code. Revoke/rotate that token and use a newly generated token through an environment variable.
+
+ERROR HANDLING
+
+Handle at least:
+
+- Telegram connection errors
+- authentication errors
+- target bot unavailable
+- unexpected bot responses
+- timeout
+- file download failures
+- invalid URLs
+- duplicate URLs
+- oversized files
+- missing permissions
+- application restart
+- worker crashes
+
+The worker must not crash the entire application because one queue item failed.
+
+CONCURRENCY
+
+Default behavior:
+
+- exactly one active target-bot task at a time
+- multiple URLs remain queued
+- control bot remains responsive while the worker is processing
+
+Use asyncio properly.
+
+Do not use blocking synchronous operations inside async handlers.
+
+LOGGING
+
+Create structured logs.
+
+Example:
+
+2026-09-08 15:30:00 INFO Added URL: example1.com
+2026-09-08 15:30:05 INFO Processing queue item #12
+2026-09-08 15:30:06 INFO Request sent
+2026-09-08 15:30:08 INFO Response received
+2026-09-08 15:30:20 INFO Result file received
+2026-09-08 15:30:22 INFO File downloaded
+2026-09-08 15:30:23 INFO Result delivered to user
+2026-09-08 15:30:24 INFO Queue item completed
+
+PERSISTENCE
+
+Use SQLite.
+
+Create tables for:
+
+- queue_items
+- processing_history
+- configuration
+
+The queue must survive application restarts.
+
+DUPLICATE PROTECTION
+
+If the same normalized URL already exists in the queue with status:
+
+PENDING
+PROCESSING
+
+do not add it again.
+
+Provide a clear message:
+
+"URL already exists in the active queue."
+
+SECURE FILE DELIVERY
+
+Before sending any file to the control user:
+
+- verify that the file was downloaded from the expected Telegram conversation
+- verify the queue item association
+- verify maximum file size
+- verify filename
+- ensure it is located inside the configured result directory
+
+Do not follow arbitrary paths supplied by remote messages.
+
+README
+
+Create a complete README containing:
+
+1. Requirements
+2. Telegram API credentials setup
+3. Bot creation
+4. Environment configuration
+5. Installation
+6. First run
+7. Telegram user authorization
+8. Queue usage
+9. Troubleshooting
+10. Security notes
+11. Running with systemd
+12. Running with Docker
+
+Example installation:
+
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+Example startup:
+
+python main.py
+
+DEVELOPMENT QUALITY
+
+Write production-quality code.
+
+Requirements:
+
+- Python 3.11+
+- type hints
+- meaningful exception classes
+- modular architecture
+- async/await
+- clean logging
+- no hardcoded credentials
+- configurable timeouts
+- graceful shutdown
+- automatic reconnect where appropriate
+- SQLite persistence
+- unit-testable components
+
+Add tests for:
+
+- URL normalization
+- duplicate detection
+- queue insertion
+- queue removal
+- state transitions
+- retry logic
+- timeout handling
+- file validation
+- authorization
+
+DELIVERABLE
+
+Return the complete project structure and all source files required to run the application.
+
+The final implementation must be a legitimate Telegram automation/queue system for authorized, non-sensitive data and must not implement credential harvesting or retrieval of stolen login/password databases.
