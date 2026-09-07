@@ -2,13 +2,14 @@
 """
 Telegram Bot - komunikacja z tmlogbot API
 Wyszukuje dane logowania (login:pass) dla podanych domen.
+Wyszukiwanie równoległe - wszystkie domeny naraz.
 """
 
 import os
-import re
+import asyncio
 import logging
-import requests
-from telegram import Update, InputFile
+import aiohttp
+from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -26,8 +27,6 @@ logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 TMLOG_API_URL = os.environ.get("TMLOG_API_URL", "https://tmlogbot.com/api")
-TMLOG_LOGIN = os.environ.get("TMLOG_LOGIN", "")
-TMLOG_PASS = os.environ.get("TMLOG_PASS", "")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -35,7 +34,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Bot gotowy!\n\n"
         "Wyślij mi listę domen (po jednej w linii):\n"
         "example.com\nexample2.com\n\n"
-        "Bot wyszuka dane logowania dla każdej domeny."
+        "Wszystkie wyszukiwania nastapią równolegle."
     )
 
 
@@ -48,43 +47,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     await update.message.reply_text(
-        f"Przetwarzam {len(domains)} domen..."
+        f"Przetwarzam {len(domains)} domen równolegle..."
     )
 
-    results = []
+    tasks = [search_domain(domain) for domain in domains]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    for domain in domains:
-        await update.message.reply_text(f"Szukam: {domain}...")
+    for domain, result in zip(domains, results):
+        if isinstance(result, Exception):
+            await update.message.reply_text(f"{domain}: Błąd - {str(result)}")
+            continue
 
-        try:
-            search_result = await search_domain(domain)
-            results.append({
-                "domain": domain,
-                "data": search_result,
-            })
-        except Exception as e:
-            logger.error(f"Błąd dla {domain}: {e}")
-            results.append({
-                "domain": domain,
-                "data": f"Błąd: {str(e)}",
-            })
-
-    for result in results:
-        domain = result["domain"]
-        data = result["data"]
-
-        if isinstance(data, list) and len(data) > 0:
-            content = "\n".join(data)
-            line_count = len(data)
+        if isinstance(result, list) and len(result) > 0:
+            content = "\n".join(result)
+            line_count = len(result)
             bio = BytesIO(content.encode("utf-8"))
-            bio.name = f"{domain}.txt"
+            filename = f"{domain}_{line_count}.txt"
+            bio.name = filename
 
             await update.message.reply_document(
                 document=bio,
-                caption=f"Plik: {domain}.txt\nLinii: {line_count}",
+                caption=f"Plik: {filename}\nLinii: {line_count}",
             )
-        elif isinstance(data, str):
-            await update.message.reply_text(f"{domain}: {data}")
+        elif isinstance(result, str):
+            await update.message.reply_text(f"{domain}: {result}")
         else:
             await update.message.reply_text(f"{domain}: Brak wyników")
 
@@ -94,32 +80,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def search_domain(domain: str) -> list:
     """Wyszukuje dane logowania dla domeny przez tmlogbot API."""
     try:
-        response = requests.post(
-            f"{TMLOG_API_URL}/search",
-            json={
-                "domain": domain,
-                "login": TMLOG_LOGIN,
-                "password": TMLOG_PASS,
-            },
-            timeout=60,
-        )
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{TMLOG_API_URL}/search",
+                json={"domain": domain},
+                timeout=aiohttp.ClientTimeout(total=60),
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
 
-        if response.status_code == 200:
-            data = response.json()
+                    if isinstance(data, dict) and "results" in data:
+                        return data["results"]
+                    elif isinstance(data, list):
+                        return data
+                    else:
+                        return [str(data)]
+                else:
+                    return [f"API zwróciło status {response.status}"]
 
-            if isinstance(data, dict) and "results" in data:
-                return data["results"]
-            elif isinstance(data, list):
-                return data
-            else:
-                return [str(data)]
-
-        else:
-            return [f"API zwróciło status {response.status_code}"]
-
-    except requests.exceptions.Timeout:
+    except asyncio.TimeoutError:
         return ["Timeout - API nie odpowiada"]
-    except requests.exceptions.ConnectionError:
+    except aiohttp.ClientError:
         return ["Błąd połączenia z API"]
     except Exception as e:
         return [f"Nieoczekiwany błąd: {str(e)}"]
