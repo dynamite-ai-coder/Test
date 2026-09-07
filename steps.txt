@@ -1,0 +1,575 @@
+PLAN IMPLEMENTACJI PROJEKTU LOCAL BROWSER AGENT
+===============================================
+
+Cel: zbudować działającą lokalnie aplikację agenta przeglądarkowego uruchamianą pod
+http://127.0.0.1:24400. Plan wynika z wymagań zawartych w promt.txt.
+
+Zasady nadrzędne
+-----------------
+1. Nie implementować wszystkiego jednocześnie. Każda faza kończy się testem i punktem kontrolnym.
+2. Nie używać nieaktualnych przykładów Browser Use. Najpierw sprawdzić API zainstalowane w środowisku.
+3. Nie przechowywać ani nie logować kluczy, haseł, cookies, tokenów ani nagłówków autoryzacyjnych.
+4. Nie implementować CAPTCHA bypassu, Cloudflare bypassu, spoofingu fingerprintu ani omijania MFA.
+5. Działania nieodwracalne muszą wymagać potwierdzenia użytkownika.
+6. Najpierw ukończyć MVP, dopiero potem dodawać zaawansowane role agentów i benchmarki.
+7. Nie oznaczać funkcji jako gotowej, jeśli nie została uruchomiona i przetestowana.
+
+FAZA 0 — INSPEKCJA I DECYZJE ARCHITEKTONICZNE
+-----------------------------------------------
+
+Krok 0.1 — Sprawdzenie repozytorium
+
+- wykonać `git status`, `git branch -vv` i `git remote -v`;
+- zidentyfikować istniejące pliki, konfigurację Acode/opencode oraz zmiany użytkownika;
+- nie nadpisywać niezwiązanych zmian;
+- ustalić, czy projekt ma już backend, frontend, testy lub konfigurację uruchomieniową.
+
+Krok 0.2 — Sprawdzenie środowiska
+
+- sprawdzić wersję Pythona (`python --version`);
+- sprawdzić dostępność `uv`, Node.js, npm/pnpm i Chromium;
+- sprawdzić system operacyjny i sposób uruchamiania procesów;
+- ustalić, czy można instalować pakiety i pobrać przeglądarkę;
+- odnotować ograniczenia terminala Acode.
+
+Krok 0.3 — Inspekcja Browser Use
+
+- sprawdzić, czy `browser-use` jest zainstalowany;
+- zapisać dokładną wersję i źródło instalacji;
+- sprawdzić importy oraz sygnatury `Agent`, `BrowserSession`, `BrowserProfile`;
+- sprawdzić aktualną integrację ChatGroq;
+- sprawdzić API screenshotów, CDP, kart i stanu strony;
+- utworzyć minimalny skrypt eksperymentalny otwierający stronę i odczytujący URL.
+
+Krok 0.4 — Dokumentacja decyzji
+
+Utworzyć `docs/environment-report.md` zawierający:
+
+- wersje narzędzi i pakietów;
+- potwierdzone importy i API Browser Use;
+- sposób uruchamiania Chromium;
+- ryzyka kompatybilności;
+- ograniczenia środowiska;
+- dokładny zakres MVP;
+- decyzje architektoniczne i ich uzasadnienie.
+
+Punkt kontrolny 0: raport istnieje, środowisko jest znane, a minimalny test Browser Use
+działa lub opisano blokadę i wybrano bezpieczny fallback.
+
+FAZA 1 — SZKIELET PROJEKTU I KONFIGURACJA
+------------------------------------------
+
+Krok 1.1 — Struktura katalogów
+
+Utworzyć tylko potrzebne katalogi:
+
+backend/app/{api,agents,browser,communication,database,events,llm,orchestrator,safety,tasks}
+frontend/src/{components,hooks,services,types}
+tests/{unit,integration,fixtures}
+scripts docs data
+
+Pliki bazowe:
+
+- `backend/app/main.py`
+- `backend/app/config.py`
+- `pyproject.toml` lub równoważny plik uv
+- `frontend/package.json`
+- `.env.example`
+- `.gitignore`
+- `README.md`
+- `run.py`, `run.sh`, `run.ps1`
+
+Krok 1.2 — Konfiguracja
+
+- użyć Pydantic Settings lub równoważnej walidacji;
+- ustawić bezpieczne domyślne wartości z promptu;
+- walidować port, timeouty, FPS, maksymalną liczbę kroków i rozmiar uploadu;
+- nie ujawniać wartości sekretów w reprezentacji konfiguracji;
+- rozróżnić tryb `mock` i tryb z Groq;
+- przygotować `.env.example`, ale nie tworzyć `.env` z prawdziwymi kluczami.
+
+Krok 1.3 — Bezpieczne katalogi danych
+
+- utworzyć `data/browser-profile/`, `data/uploads/`, `data/screenshots/` i `data/logs/` podczas startu;
+- dodać je do `.gitignore`;
+- nie serwować katalogu `data/` jako statycznego frontendowego katalogu;
+- sprawdzić uprawnienia i ścieżki absolutne po normalizacji.
+
+Krok 1.4 — Test konfiguracji
+
+Napisać testy dla:
+
+- wartości domyślnych;
+- parsowania zmiennych środowiskowych;
+- brakujących kluczy Groq;
+- błędnych timeoutów i ścieżek;
+- maskowania sekretów.
+
+Punkt kontrolny 1: konfiguracja ładuje się bez kluczy API, testy konfiguracji przechodzą,
+a struktura katalogów jest odtwarzalna.
+
+FAZA 2 — WARSTWA BAZY I ZDARZEŃ
+--------------------------------
+
+Krok 2.1 — Modele domenowe
+
+Zdefiniować w Pydantic wersjonowane modele:
+
+- `TaskCreateRequest`, `TaskRecord`, `TaskStatus`;
+- `BrowserState`, `BrowserTab`, `InteractiveElement`;
+- `BrowserAction`, `BrowserActionResult`;
+- `TaskPlan`, `PerceptionResult`, `VerificationResult`;
+- `AgentError`, `AgentEvent`.
+
+Każdy model musi mieć jawne typy, wartości domyślne i walidację. Nie przekazywać całego
+DOM-u do modeli językowych; stan ma zawierać tylko potrzebny wycinek.
+
+Krok 2.2 — SQLite
+
+Utworzyć tabelę zadań zawierającą:
+
+- identyfikator;
+- timestamp utworzenia i zakończenia;
+- zsanityzowane żądanie użytkownika;
+- status;
+- czas trwania;
+- zsanityzowany wynik/błąd;
+- liczbę wywołań LLM;
+- liczbę akcji przeglądarki.
+
+Nie zapisywać haseł, cookies, tokenów, nagłówków ani surowych sekretów formularzy.
+
+Krok 2.3 — Magistrala zdarzeń
+
+- zaimplementować asynchroniczne publikowanie zdarzeń per `task_id`;
+- zapewnić kolejność zdarzeń;
+- dodać timestamp ISO-8601;
+- ograniczyć rozmiar payloadu;
+- bezpiecznie obsłużyć rozłączenie klienta;
+- zdefiniować wszystkie wymagane typy zdarzeń z promptu.
+
+Krok 2.4 — Testy
+
+- serializacja/deserializacja modeli;
+- odrzucanie nieprawidłowych akcji;
+- zapis i odczyt historii;
+- brak sekretów w bazie;
+- kolejność i kompletność zdarzeń.
+
+Punkt kontrolny 2: modele, baza i zdarzenia działają niezależnie od przeglądarki i LLM.
+
+FAZA 3 — SESJA PRZEGLĄDARKI I STAN
+-----------------------------------
+
+Krok 3.1 — Adapter Browser Use
+
+- utworzyć jedną klasę/adaptor dla aktualnego API Browser Use;
+- skonfigurować widoczny Chromium (`BROWSER_HEADLESS=false`);
+- użyć trwałego profilu `data/browser-profile`;
+- zapewnić start, stop, reconnect i bezpieczne zamknięcie;
+- nie tworzyć własnego sterownika przeglądarki.
+
+Krok 3.2 — Normalizacja stanu
+
+Zwracać:
+
+- aktualny URL i tytuł;
+- listę kart i aktywną kartę;
+- ograniczony widoczny tekst;
+- linki, przyciski i pola formularzy;
+- metadane screenshotu;
+- timestamp i numer wersji stanu.
+
+Wprowadzić limity znaków, liczbę elementów i timeout odczytu.
+
+Krok 3.3 — Executor akcji
+
+Obsłużyć kolejno:
+
+1. `goto`
+2. `click`
+3. `input`
+4. `scroll`
+5. `wait`
+6. `screenshot`
+7. `extract`
+8. `go_back`
+9. `go_forward`
+10. `reload`
+
+Każda akcja:
+
+- ma walidowany argument;
+- ma timeout;
+- mierzy latencję;
+- zwraca URL i zsanityzowany wynik;
+- opcjonalnie emituje screenshot;
+- nie wykonuje operacji poza dozwolonym zakresem.
+
+Krok 3.4 — Odporność
+
+- wykrywać zamkniętą/crashującą sesję;
+- próbować kontrolowanego restartu;
+- przywrócić profil;
+- ponownie odczytać stan;
+- kontynuować tylko, gdy stan jest jednoznaczny.
+
+Krok 3.5 — Testy przeglądarki
+
+Użyć lokalnej strony testowej lub fixture, nie zewnętrznego serwisu wymagającego konta.
+Przetestować nawigację, odczyt stanu, click, input, reload, historię i screenshot.
+
+Punkt kontrolny 3: Chromium uruchamia się, profil jest trwały, a wszystkie akcje MVP
+działają z deterministycznymi testami.
+
+FAZA 4 — ORKIESTRATOR ZADAŃ I TRYB MOCK
+----------------------------------------
+
+Krok 4.1 — Cykl życia zadania
+
+Zaimplementować stany:
+
+`created → started → planning/running → waiting_for_user/paused → resumed → completed/failed/stopped`.
+
+- jeden task ma jeden kontrolowany runner;
+- ustawić `AGENT_MAX_STEPS` i `AGENT_TIMEOUT`;
+- wspierać anulowanie poprzez `asyncio.Event`;
+- nie zostawiać zadań osieroconych po rozłączeniu klienta.
+
+Krok 4.2 — Mock LLM
+
+- stworzyć deterministyczny adapter bez sieci;
+- mapować proste zadanie na bezpieczny plan akcji;
+- generować poprawne modele Pydantic;
+- umożliwić pełne testowanie bez kluczy Groq;
+- oznaczać w statusie, że użyto trybu mock.
+
+Krok 4.3 — Minimalny przepływ
+
+Żądanie użytkownika → walidacja → plan mock → akcja Browser Use → odczyt stanu →
+weryfikacja → eventy → zapis historii.
+
+Krok 4.4 — Pauza i zatrzymanie
+
+- PAUSE blokuje nowe akcje, ale pozostawia Chromium otwarte;
+- RESUME ponownie odczytuje stan przed kolejną akcją;
+- STOP anuluje runner i oczekujące wywołania;
+- CONTINUE jest dozwolone tylko po potwierdzeniu wymaganym przez bezpieczeństwo.
+
+Punkt kontrolny 4: mockowe zadanie kończy się poprawnie, emituje eventy i zapisuje historię.
+
+FAZA 5 — API FASTAPI I WEBSOCKET
+--------------------------------
+
+Krok 5.1 — Endpointy
+
+Zaimplementować:
+
+- `POST /api/tasks`;
+- `GET /api/tasks/{task_id}`;
+- `POST /api/tasks/{task_id}/pause`;
+- `POST /api/tasks/{task_id}/resume`;
+- `POST /api/tasks/{task_id}/stop`;
+- `GET /api/browser/state`;
+- `GET /api/browser/tabs`;
+- `POST /api/browser/navigate`;
+- `POST /api/browser/reload`;
+- `POST /api/browser/screenshot`;
+- `GET /api/health`;
+- `GET /api/status`.
+
+Krok 5.2 — WebSocket
+
+- `WS /ws/tasks/{task_id}` subskrybuje eventy konkretnego zadania;
+- sprawdzać `Origin`;
+- wysyłać heartbeat lub wykrywać timeout;
+- obsłużyć reconnect przez ponowne wysłanie bieżącego statusu;
+- nie wysyłać sekretów i cookies.
+
+Krok 5.3 — Testy API
+
+- zdrowie i status;
+- utworzenie zadania;
+- walidacja błędnego żądania;
+- pause/resume/stop;
+- WebSocket event sequence;
+- reconnect po rozłączeniu.
+
+Punkt kontrolny 5: API i WebSocket obsługują całe mockowe zadanie bez frontendu.
+
+FAZA 6 — FRONTEND REACT
+-----------------------
+
+Krok 6.1 — Inicjalizacja
+
+- skonfigurować React + TypeScript + Vite + Tailwind;
+- zdefiniować typy zgodne z modelami backendu;
+- ustawić adres API przez konfigurację, z domyślnym localhost.
+
+Krok 6.2 — Komponenty
+
+Utworzyć:
+
+- panel historii i rozmowy;
+- formularz zadania;
+- panel statusu i postępu;
+- listę aktywności agenta;
+- podgląd przeglądarki;
+- pasek aktualnego URL;
+- przyciski Run, Pause, Resume, Stop, New Task;
+- komunikat Human interaction required;
+- tryb rozszerzenia podglądu.
+
+Krok 6.3 — Hooki i usługi
+
+- hook WebSocket z reconnect;
+- hook statusu zadania;
+- klient REST z walidacją błędów;
+- bezpieczne przechowywanie wyłącznie identyfikatorów i statusów;
+- nie przechowywać sekretów w localStorage.
+
+Krok 6.4 — Testy UI
+
+- renderowanie stanu pustego;
+- wysłanie zadania;
+- aktualizacja postępu;
+- pause/resume/stop;
+- reconnect;
+- komunikat human-in-the-loop;
+- rozszerzenie i zwinięcie preview.
+
+Punkt kontrolny 6: użytkownik może uruchomić mockowe zadanie z UI i obserwować jego przebieg.
+
+FAZA 7 — INTEGRACJA GROQ I ROUTER MODELI
+-----------------------------------------
+
+Krok 7.1 — Adapter LLM
+
+- utworzyć interfejs niezależny od dostawcy;
+- dodać timeout, ograniczenie tokenów i walidację odpowiedzi;
+- wymusić struktury Pydantic;
+- zredagować dane w logach;
+- nie wykonywać sieciowych wywołań w testach jednostkowych.
+
+Krok 7.2 — Konfiguracja pięciu slotów
+
+- odczytać `GROQ_API_KEY_1..5` i `GROQ_MODEL_1..5`;
+- ignorować puste sloty;
+- nigdy nie zwracać kluczy przez API/status;
+- pokazywać wyłącznie liczbę skonfigurowanych slotów i bezpieczny stan dostępności.
+
+Krok 7.3 — ModelRouter
+
+Rejestrować per slot:
+
+- latencję;
+- timeouty;
+- błędy API;
+- rate limits;
+- niepoprawne odpowiedzi;
+- sukcesy.
+
+Wybierać model deterministycznie według roli i zdrowia. Stosować ograniczone retry z backoffem.
+Nie obchodzić limitów dostawcy.
+
+Krok 7.4 — Role agentów
+
+Dodawać w tej kolejności:
+
+1. Browser Operator — proste zadania;
+2. Planner — rozbijanie zadań wieloetapowych;
+3. Perception — tylko przy niewystarczającym stanie;
+4. Critic/Recovery — po błędzie lub niejednoznaczności;
+5. Judge — tylko jako ostatnia kontrola.
+
+Punkt kontrolny 7: jedno skonfigurowane konto Groq działa, brakujące sloty nie powodują
+awarii, a proste zadanie nie uruchamia niepotrzebnych agentów.
+
+FAZA 8 — BEZPIECZEŃSTWO I HUMAN-IN-THE-LOOP
+---------------------------------------------
+
+Krok 8.1 — Operacje wymagające potwierdzenia
+
+Zatrzymać i poprosić o potwierdzenie przed:
+
+- wysłaniem formularza;
+- wysłaniem wiadomości;
+- zakupem lub płatnością;
+- usunięciem danych;
+- zmianą ustawień konta;
+- finalizacją rejestracji.
+
+Krok 8.2 — Wyzwania bezpieczeństwa
+
+- wykrywać charakterystyczne sygnały CAPTCHA/MFA/Cloudflare, bez obchodzenia ich;
+- emitować `task.waiting_for_user`;
+- pokazać tekst `Human interaction required`;
+- pozostawić widoczną przeglądarkę;
+- po potwierdzeniu odczytać stan i zweryfikować URL przed wznowieniem.
+
+Krok 8.3 — Uploady
+
+- ograniczyć rozmiar do `MAX_UPLOAD_MB`;
+- wygenerować bezpieczną nazwę;
+- odrzucić ścieżki absolutne, `..` i wykonywalne typy;
+- zapisać poza katalogiem publicznym;
+- nie ujawniać pliku przez przypadkowy endpoint statyczny.
+
+Krok 8.4 — Audyt bezpieczeństwa
+
+- przeszukać kod pod kątem `print` sekretów i kluczy;
+- sprawdzić `.gitignore`;
+- przetestować nieprawidłowy Origin;
+- przetestować path traversal;
+- przetestować limity timeoutów i uploadów;
+- sprawdzić, że screenshoty i błędy nie zawierają sekretów.
+
+Punkt kontrolny 8: ryzykowne akcje wymagają decyzji człowieka, a wyzwania bezpieczeństwa
+zatrzymują agenta bez prób obejścia.
+
+FAZA 9 — PERSISTENCJA, OBSŁUGA BŁĘDÓW I RECONNECT
+--------------------------------------------------
+
+Krok 9.1 — Błędy
+
+Obsłużyć jawnie:
+
+- timeout i rate limit Groq;
+- niepoprawną odpowiedź strukturalną;
+- błąd nawigacji;
+- brak elementu;
+- crash Chromium;
+- rozłączenie WebSocket;
+- anulowanie użytkownika.
+
+Każdy błąd ma kod, bezpieczny komunikat, timestamp i informację, czy retry jest dozwolony.
+
+Krok 9.2 — Recovery
+
+- retry tylko dla błędów przejściowych;
+- po crashu uruchomić ponownie sesję i profil;
+- po reconnect wysłać aktualny stan;
+- nie powtarzać automatycznie akcji nieodwracalnych;
+- zatrzymać zadanie, gdy stan jest niejednoznaczny.
+
+Krok 9.3 — Testy awarii
+
+Wymusić mockiem timeout LLM, rate limit, crash przeglądarki, błąd elementu, disconnect
+WebSocket i STOP w trakcie akcji.
+
+Punkt kontrolny 9: aplikacja odzyskuje się tylko tam, gdzie retry jest bezpieczny, i nie
+wykonuje podwójnie operacji nieodwracalnych.
+
+FAZA 10 — BENCHMARK I OPTYMALIZACJA
+------------------------------------
+
+Wykonywać dopiero po przejściu wszystkich testów MVP.
+
+Krok 10.1 — Narzędzie benchmarkowe
+
+Utworzyć `scripts/benchmark.py` mierzący:
+
+- czas odpowiedzi LLM;
+- czas akcji przeglądarki;
+- czas ekstrakcji stanu;
+- czas screenshotu;
+- czas całego zadania;
+- liczbę wywołań modeli;
+- tokeny, jeśli dostawca je zwraca;
+- odsetek sukcesów.
+
+Krok 10.2 — Scenariusze
+
+Porównać:
+
+- single agent;
+- planner + browser operator;
+- planner + operator + recovery.
+
+Pełne pięć ról uruchamiać tylko jako osobny scenariusz, nie jako domyślny tryb.
+
+Krok 10.3 — Optymalizacja
+
+Optymalizować wyłącznie na podstawie pomiarów: ograniczać stan strony, używać cache tylko
+bezpiecznie, utrzymywać jedną sesję i unikać zbędnych wywołań modeli.
+
+Punkt kontrolny 10: raport benchmarku zawiera środowisko, dane wejściowe, wyniki i ograniczenia.
+
+FAZA 11 — DOKUMENTACJA I TEST KOŃCOWY
+---------------------------------------
+
+Krok 11.1 — README
+
+Udokumentować:
+
+- instalację przez uv i npm;
+- wykryte/pinned wersje;
+- konfigurację `.env`;
+- uruchamianie backendu i frontendu;
+- architekturę;
+- API i WebSocket;
+- profil przeglądarki;
+- bezpieczeństwo;
+- human-in-the-loop;
+- testy, benchmarki i troubleshooting;
+- znane ograniczenia.
+
+Krok 11.2 — Skrypty startowe
+
+- `run.py` uruchamia backend i/lub frontend zgodnie z dokumentacją;
+- `run.sh` działa w środowisku POSIX;
+- `run.ps1` działa w PowerShell;
+- skrypty nie drukują sekretów;
+- startup pokazuje URL, status Chromium, liczbę slotów i ostrzeżenia.
+
+Krok 11.3 — Pełny test akceptacyjny
+
+W kolejności sprawdzić:
+
+1. instalację w czystym środowisku;
+2. start aplikacji;
+3. `/api/health`;
+4. załadowanie UI;
+5. mockowe zadanie i eventy WebSocket;
+6. start widocznego Chromium;
+7. odczyt stanu i screenshot;
+8. click/input/nawigację;
+9. pause/resume/stop;
+10. zapis historii;
+11. zachowanie bez kluczy Groq;
+12. zachowanie przy niedostępnym slocie;
+13. human-in-the-loop;
+14. reconnect WebSocket;
+15. pełny zestaw testów;
+16. benchmark, jeśli faza została osiągnięta.
+
+Krok 11.4 — Raport końcowy
+
+W raporcie podać:
+
+- zmienione i utworzone pliki;
+- dokładne komendy instalacji i startu;
+- wersje zależności;
+- wyniki testów;
+- zweryfikowane funkcje;
+- wyniki benchmarku;
+- bottlenecks;
+- znane ograniczenia;
+- niewykonane elementy i powody.
+
+DEFINITION OF DONE
+==================
+
+Projekt można uznać za ukończony dopiero wtedy, gdy:
+
+- MVP działa bez kluczy Groq w trybie mock;
+- aplikacja działa na 127.0.0.1:24400;
+- UI i API komunikują się przez WebSocket;
+- widoczny Chromium i trwały profil działają;
+- akcje przeglądarki mają walidację i timeouty;
+- pauza, wznowienie, stop i reconnect są przetestowane;
+- historia nie przechowuje sekretów;
+- wyzwania bezpieczeństwa wymagają człowieka;
+- testy przechodzą;
+- README pozwala innej osobie uruchomić projekt;
+- każda funkcja oznaczona jako ukończona ma dowód w postaci testu lub ręcznej weryfikacji.

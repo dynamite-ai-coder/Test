@@ -1,0 +1,225 @@
+You are a senior software architect and implementation agent. Build a real, local-first browser-agent application. Work incrementally, inspect the repository before coding, and never claim completion without running the stated tests.
+
+## 1. Objective and success criteria
+
+Create an original application (original source code, branding, and UI) that runs at:
+
+    http://127.0.0.1:24400
+
+The user can submit a natural-language browser task. The application can open pages, inspect targeted page state, click, type, fill forms, scroll, switch tabs, navigate, wait, extract information, take screenshots, recover from safe failures, and pause for human intervention.
+
+The first release must be a usable MVP. Advanced features are added only after the MVP acceptance tests pass.
+
+The application must never bypass CAPTCHA, Cloudflare, MFA, anti-bot controls, authentication, or other security mechanisms.
+
+## 2. Mandatory implementation policy
+
+1. Inspect the repository, Python version, installed packages, Browser Use version, and available APIs before writing implementation code.
+2. Use current, installed APIs; do not copy deprecated examples.
+3. Pin discovered dependency versions in the project configuration and document them.
+4. Make the backend asynchronous. Do not block the FastAPI event loop.
+5. Prefer the smallest working implementation. Do not create speculative modules.
+6. After every phase, run its tests and report failures honestly.
+7. Never expose or commit secrets. Never print API keys, passwords, cookies, tokens, or authentication headers.
+8. Ask for confirmation before irreversible or externally consequential actions such as submitting a form, sending a message, purchasing, deleting data, or changing account settings.
+
+## 3. Technology
+
+Backend: Python 3.12, FastAPI, Uvicorn, asyncio, Pydantic v2, WebSockets, SQLite, python-dotenv, uv.
+
+Browser: the currently installed Browser Use package with Chromium. Use its current Agent/BrowserSession/BrowserProfile/ChatGroq/CDP APIs after inspection. Do not use Selenium as the primary engine and do not write a replacement browser driver.
+
+Frontend: React, TypeScript, Vite, and Tailwind CSS.
+
+## 4. Delivery phases
+
+### Phase 0 — inspection and design
+
+Produce `docs/environment-report.md` containing:
+
+- repository and runtime inspection,
+- Python and dependency versions,
+- Browser Use APIs confirmed in this environment,
+- proposed architecture,
+- known compatibility risks,
+- explicit MVP scope.
+
+Do not implement until this report exists.
+
+### Phase 1 — MVP backend
+
+Implement:
+
+- configuration with safe defaults,
+- FastAPI application,
+- one persistent BrowserSession using `./data/browser-profile/`,
+- controlled actions: `goto`, `click`, `input`, `scroll`, `wait`, `screenshot`, `extract`, `go_back`, `go_forward`, `reload`,
+- normalized browser state: URL, title, tabs, selected tab, visible text excerpt, interactive elements, and screenshot metadata,
+- task lifecycle with cancellation and timeout,
+- SQLite task history without secrets,
+- mock LLM mode that works without API keys,
+- structured logging with secret redaction.
+
+### Phase 2 — API and UI
+
+Implement:
+
+- `POST /api/tasks`, `GET /api/tasks/{task_id}`,
+- `POST /api/tasks/{task_id}/pause`, `/resume`, `/stop`,
+- `GET /api/browser/state`, `/tabs`, `/api/health`, `/api/status`,
+- `POST /api/browser/navigate`, `/reload`, `/screenshot`,
+- `WS /ws/tasks/{task_id}`,
+- an original two-pane UI with chat/task history on the left and browser preview/state on the right,
+- streaming progress, current URL, task status, pause/resume/stop, and expandable preview.
+
+### Phase 3 — LLM integration
+
+Implement a provider-neutral adapter and support up to five independently configured Groq slots:
+
+`GROQ_API_KEY_1` … `GROQ_API_KEY_5` and `GROQ_MODEL_1` … `GROQ_MODEL_5`.
+
+One configured slot is sufficient for MVP. Missing or unavailable slots must not crash the application. Keys remain server-side and are never returned by an endpoint.
+
+Implement `ModelRouter` with health, latency, timeout, rate-limit, invalid-response, and success metrics. Use deterministic fallback selection and bounded retries; never attempt to circumvent provider limits.
+
+Implement roles incrementally:
+
+1. Browser Operator for simple tasks.
+2. Planner for multi-step tasks.
+3. Perception only when targeted state is insufficient.
+4. Critic/Recovery only after a failed or ambiguous action.
+5. Judge only when ambiguity remains.
+
+Do not call all five roles for every task.
+
+## 5. Structured internal protocol
+
+Use versioned Pydantic models, not long natural-language agent conversations:
+
+- `TaskPlan`, `BrowserAction`, `BrowserActionResult`, `PerceptionResult`, `VerificationResult`, `AgentError`, and `AgentEvent`.
+
+Every action result contains `success`, `result`, `current_url`, `latency_ms`, optional screenshot metadata, and a sanitized optional error.
+
+Every WebSocket event contains:
+
+```json
+{
+  "timestamp": "ISO-8601",
+  "task_id": "string",
+  "type": "string",
+  "payload": {}
+}
+```
+
+Required event types: task created/started/planning/completed/failed/stopped, agent started/progress/decision, browser started/navigation/action/action_result/screenshot/state, verification started/completed, and task waiting_for_user/paused/resumed.
+
+## 6. Safety and human intervention
+
+Use visible Chromium by default (`BROWSER_HEADLESS=false`). Preserve cookies and login sessions only in the local profile and never send them to the frontend.
+
+When a CAPTCHA, MFA, Cloudflare page, consent requiring a user decision, or other security checkpoint is detected or suspected:
+
+1. stop issuing agent actions,
+2. emit `task.waiting_for_user`,
+3. display `Human interaction required`,
+4. leave the browser open,
+5. resume only after explicit user confirmation,
+6. re-read and verify browser state before continuing.
+
+Implement explicit PAUSE, RESUME, STOP, and CONTINUE semantics. STOP cancels pending work while preserving the browser profile.
+
+## 7. Security requirements
+
+- Bind to `127.0.0.1` by default.
+- Validate WebSocket `Origin` and reject unexpected origins.
+- Apply request, task, upload-size, and execution-time limits.
+- Store uploads outside the static web root with generated names; prevent path traversal and executable uploads.
+- Add `.env`, `data/`, logs, profiles, and temporary files to `.gitignore`.
+- Redact secrets and sensitive form values from logs, task history, screenshots where practical, and errors.
+- Store only task metadata, sanitized user request, status, duration, result, error, LLM-call count, and browser-action count.
+
+## 8. Configuration
+
+Create `.env.example` with:
+
+```env
+HOST=127.0.0.1
+PORT=24400
+BROWSER_HEADLESS=false
+BROWSER_USER_DATA_DIR=./data/browser-profile
+BROWSER_PREVIEW_FPS=2
+AGENT_MAX_STEPS=30
+AGENT_TIMEOUT=300
+LLM_TIMEOUT=30
+MAX_UPLOAD_MB=10
+LOG_LEVEL=INFO
+GROQ_API_KEY_1=
+GROQ_API_KEY_2=
+GROQ_API_KEY_3=
+GROQ_API_KEY_4=
+GROQ_API_KEY_5=
+GROQ_MODEL_1=
+GROQ_MODEL_2=
+GROQ_MODEL_3=
+GROQ_MODEL_4=
+GROQ_MODEL_5=
+```
+
+## 9. Repository structure
+
+Use a structure close to:
+
+```text
+backend/app/{main.py,config.py,api/,agents/,browser/,llm/,orchestrator/,events/,tasks/,database/,safety/}
+frontend/src/{components/,hooks/,services/,types/,App.tsx}
+tests/{unit/,integration/}
+scripts/benchmark.py
+docs/environment-report.md
+data/
+.env.example
+README.md
+run.py
+run.sh
+run.ps1
+```
+
+Keep modules small and add no empty placeholder packages.
+
+## 10. Testing and acceptance
+
+All tests must run without real Groq keys by using mocks and a deterministic test browser where possible. Add unit tests for configuration, routing, structured messages, browser state, action execution, events, pause/resume, cancellation, safety, and upload validation. Add integration tests for navigation, extraction, clicking, typing, multi-step execution, interruption, and recovery.
+
+The MVP is complete only when all of these are demonstrated:
+
+- the server starts on `127.0.0.1:24400`,
+- `/api/health` works,
+- the UI loads,
+- a mock task completes and streams WebSocket events,
+- Chromium can launch and expose state/screenshot,
+- pause, resume, and stop work,
+- task history is persisted without secrets,
+- an unavailable Groq slot is handled safely,
+- security-checkpoint flow pauses for a human,
+- tests pass.
+
+Only after MVP acceptance passes, add optional benchmarks and advanced multi-agent roles.
+
+## 11. Benchmark
+
+Implement `scripts/benchmark.py` only after the MVP. Measure reproducibly defined metrics: browser action latency, state extraction latency, screenshot latency, LLM latency, total task latency, number of model calls, token usage when available, and success rate. Compare single-agent, planner+operator, and recovery-enabled modes. Save a timestamped report and document the test environment. Do not claim that a serialization format is faster without measured data.
+
+## 12. Documentation and final report
+
+Write a README covering installation, pinned versions, setup, environment variables, startup, architecture, safety, human intervention, testing, troubleshooting, and limitations.
+
+At the end, report:
+
+1. files created or changed,
+2. exact installation and startup commands,
+3. dependency versions,
+4. tests run and results,
+5. features verified,
+6. known limitations and unresolved risks,
+7. benchmark results if the benchmark phase was reached.
+
+Do not report an unverified feature as complete. If a dependency or browser capability is unavailable, state the blocker and provide the safest fallback.

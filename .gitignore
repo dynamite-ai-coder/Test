@@ -1,0 +1,33 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Runtime data
+data/
+logs/
+*.log
+
+# Browser profiles and temporary files
+browser-profile/
+tmp/
+temp/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Local editor and OS files
+.DS_Store
+.idea/
+.vscode/
