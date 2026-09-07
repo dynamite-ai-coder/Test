@@ -8,9 +8,7 @@ services:
     envVars:
       - key: BOT_TOKEN
         sync: false
-      - key: TMLOG_BOT_USERNAME
-        value: "tmlogbot"
-      - key: TMLOG_CHAT_ID
+      - key: TTM_API_URL
+        value: "https://enginesearch.top"
+      - key: TTM_TOKEN
         sync: false
-      - key: LOGIN_PASS
-        value: "login:pass"

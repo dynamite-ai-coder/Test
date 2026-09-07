@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Telegram Bot - komunikacja z tmlogbot przez Telegram
-Wyszukuje dane logowania (login:pass) dla podanych domen.
+Telegram Bot @Multi_url_bot - komunikacja z TTM API (enginesearch.top)
+Wyszukuje dane logowania (url:login:pass) dla podanych domen.
 """
 
 import os
 import asyncio
 import logging
+import aiohttp
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -24,10 +25,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-TMLOG_BOT_USERNAME = os.environ.get("TMLOG_BOT_USERNAME", "tmlogbot")
-LOGIN_PASS = os.environ.get("LOGIN_PASS", "login:pass")
-
-user_sessions = {}
+TTM_API_URL = os.environ.get("TTM_API_URL", "https://enginesearch.top")
+TTM_TOKEN = os.environ.get("TTM_TOKEN", "")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -35,8 +34,33 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Bot gotowy!\n\n"
         "Wyślij mi listę domen (po jednej w linii):\n"
         "example.com\nexample2.com\n\n"
-        "Wyszukam dane logowania dla każdej domeny."
+        "Wyszukam dane logowania (url:login:pass) dla każdej domeny."
     )
+
+
+async def limits(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not TTM_TOKEN:
+        await update.message.reply_text("TTM_TOKEN nie jest ustawiony!")
+        return
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{TTM_API_URL}/limits",
+                params={"token": TTM_TOKEN},
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    await update.message.reply_text(
+                        f"Pozostałe limity:\n"
+                        f"ULP (search/login/password): {data.get('ulprequest', '?')}\n"
+                        f"MAIL: {data.get('mailsrequest', '?')}"
+                    )
+                else:
+                    await update.message.reply_text(f"Błąd API: status {response.status}")
+    except Exception as e:
+        await update.message.reply_text(f"Błąd: {str(e)}")
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -47,112 +71,65 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("Nie podano żadnych domen.")
         return
 
-    chat_id = update.message.chat_id
-    user_sessions[chat_id] = {
-        "domains": domains,
-        "current": 0,
-        "results": {},
-        "waiting_for_response": False,
-    }
-
-    await update.message.reply_text(
-        f"Przetwarzam {len(domains)} domen...\n"
-        f"Rozpoczynam wyszukiwanie dla: {domains[0]}"
-    )
-
-    await search_next_domain(chat_id, context)
-
-
-async def search_next_domain(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
-    session = user_sessions.get(chat_id)
-    if not session or session["current"] >= len(session["domains"]):
-        await finish_search(chat_id, context)
+    if not TTM_TOKEN:
+        await update.message.reply_text("TTM_TOKEN nie jest ustawiony!")
         return
 
-    domain = session["domains"][session["current"]]
-    session["waiting_for_response"] = True
+    await update.message.reply_text(f"Przetwarzam {len(domains)} domen...")
 
-    tmlog_chat_id = os.environ.get("TMLOG_CHAT_ID", "")
+    tasks = [search_domain(domain) for domain in domains]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    if tmlog_chat_id:
-        await context.bot.send_message(
-            chat_id=int(tmlog_chat_id),
-            text=f"/search {domain}"
-        )
-        logger.info(f"Wysłano /search {domain} do tmlogbot (chat: {tmlog_chat_id})")
-    else:
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"Wyszukiwanie: {domain}...\n"
-                 f"(TMLOG_CHAT_ID nie ustawione - symulacja)"
-        )
-        session["results"][domain] = ["symulacja: login:pass"]
-        session["current"] += 1
-        session["waiting_for_response"] = False
-        await asyncio.sleep(1)
-        await search_next_domain(chat_id, context)
-
-
-async def handle_tmlog_response(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    text = update.message.text.strip()
-    chat_id = update.message.chat_id
-
-    for uid, session in user_sessions.items():
-        if not session["waiting_for_response"]:
+    for domain, result in zip(domains, results):
+        if isinstance(result, Exception):
+            await update.message.reply_text(f"{domain}: Błąd - {str(result)}")
             continue
 
-        domain = session["domains"][session["current"]]
+        status, lines = result
 
-        if "URL:login:pass" in text or "login:pass" in text:
-            tmlog_chat_id = os.environ.get("TMLOG_CHAT_ID", "")
-            if tmlog_chat_id:
-                await context.bot.send_message(
-                    chat_id=int(tmlog_chat_id),
-                    text=LOGIN_PASS
-                )
-                logger.info(f"Wysłano {LOGIN_PASS} do tmlogbot")
-            return
-
-        if "plik" in text.lower() or "wynik" in text.lower() or "result" in text.lower():
-            if domain not in session["results"]:
-                session["results"][domain] = []
-            session["results"][domain].append(text)
-
-            if len(session["results"][domain]) >= 1:
-                session["current"] += 1
-                session["waiting_for_response"] = False
-                await search_next_domain(uid, context)
-            return
-
-
-async def finish_search(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
-    session = user_sessions.get(chat_id)
-    if not session:
-        return
-
-    await context.bot.send_message(chat_id=chat_id, text="Zakończono wyszukiwanie. Wysyłam pliki...")
-
-    for domain, results in session["results"].items():
-        if results:
-            content = "\n".join(results)
-            line_count = len(results)
+        if status == 200 and lines:
+            content = "\n".join(lines)
+            line_count = len(lines)
             bio = BytesIO(content.encode("utf-8"))
             filename = f"{domain}.txt"
             bio.name = filename
 
-            await context.bot.send_document(
-                chat_id=chat_id,
+            await update.message.reply_document(
                 document=bio,
-                caption=f"Plik: {filename}\nDomena: {domain}\nLinii: {line_count}",
+                caption=f"Plik: {domain}.txt\nDomena: {domain}\nLinii: {line_count}",
             )
+        elif status == 404:
+            await update.message.reply_text(f"{domain}: Nie znaleziono wyników")
+        elif status == 403:
+            await update.message.reply_text(f"{domain}: Brak credits (ulprequest)")
+        elif status == 401:
+            await update.message.reply_text(f"{domain}: Nieprawidłowy token API")
         else:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"{domain}: Brak wyników"
-            )
+            await update.message.reply_text(f"{domain}: Status {status}")
 
-    await context.bot.send_message(chat_id=chat_id, text="Wszystkie pliki wysłane.")
-    del user_sessions[chat_id]
+    await update.message.reply_text("Zakończono przetwarzanie.")
+
+
+async def search_domain(domain: str) -> tuple:
+    """Wyszukuje dane logowania dla domeny przez TTM API."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{TTM_API_URL}/search",
+                params={"query": domain, "token": TTM_TOKEN},
+                timeout=aiohttp.ClientTimeout(total=60),
+            ) as response:
+                if response.status == 200:
+                    text = await response.text()
+                    lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
+                    return (200, lines)
+                else:
+                    return (response.status, [])
+
+    except asyncio.TimeoutError:
+        raise TimeoutError("Timeout - API nie odpowiada")
+    except aiohttp.ClientError as e:
+        raise ConnectionError(f"Błąd połączenia: {str(e)}")
 
 
 def main() -> None:
@@ -160,9 +137,14 @@ def main() -> None:
         logger.error("BOT_TOKEN nie jest ustawiony!")
         return
 
+    if not TTM_TOKEN:
+        logger.error("TTM_TOKEN nie jest ustawiony!")
+        return
+
     application = Application.builder().token(BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("limits", limits))
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
     )
