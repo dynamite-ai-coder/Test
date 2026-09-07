@@ -1,8 +1,6 @@
 import asyncio
-from typing import Optional, Callable, Awaitable, Any
-
-from telethon import TelegramClient, events
-from telethon.tl.types import DocumentAttributeFilename
+import aiohttp
+from typing import Optional
 
 from config import Config
 from logger import setup_logger
@@ -13,49 +11,87 @@ logger = setup_logger("telegram_client")
 class TelegramClientManager:
     def __init__(self, config: Config):
         self.config = config
-        self.client: Optional[TelegramClient] = None
         self.target_chat_id: Optional[int] = None
         self._response_event = asyncio.Event()
         self._file_event = asyncio.Event()
         self._last_response: Optional[str] = None
-        self._last_document: Optional[Any] = None
-        self._last_message_id: Optional[int] = None
-        self._on_file_callback: Optional[Callable] = None
+        self._last_document_data: Optional[bytes] = None
+        self._last_filename: Optional[str] = None
         self._waiting_for_selection = False
+        self._offset: int = 0
+        self._polling_task: Optional[asyncio.Task] = None
+
+    @property
+    def _base_url(self) -> str:
+        return f"https://api.telegram.org/bot{self.config.telegram_bot_token}"
 
     async def start(self) -> None:
-        self.client = TelegramClient(
-            "session",
-            self.config.telegram_api_id,
-            self.config.telegram_api_hash,
-        )
-        await self.client.start()
-        logger.info("Telegram client uruchomiony")
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{self._base_url}/getMe") as resp:
+                data = await resp.json()
+                if data.get("ok"):
+                    bot_info = data["result"]
+                    logger.info(f"Bot połączony: @{bot_info.get('username')}")
+                else:
+                    logger.error(f"Błąd połączenia z bot API: {data}")
 
-        target = await self.client.get_entity(self.config.target_bot_username)
-        self.target_chat_id = target.id
-        logger.info(f"Target bot: {self.config.target_bot_username} (ID: {self.target_chat_id})")
-
-        self.client.add_event_handler(
-            self._handle_new_message,
-            events.NewMessage(from_users=self.target_chat_id),
-        )
+        self._polling_task = asyncio.create_task(self._poll_updates())
+        logger.info("Polling uruchomiony")
 
     async def stop(self) -> None:
-        if self.client:
-            await self.client.disconnect()
+        if self._polling_task:
+            self._polling_task.cancel()
+            try:
+                await self._polling_task
+            except asyncio.CancelledError:
+                pass
 
-    async def _handle_new_message(self, event: events.NewMessage.Event) -> None:
-        message = event.message
-        text = message.text or ""
+    async def _poll_updates(self) -> None:
+        """Long polling - nasłuchuje odpowiedzi od ttmbot."""
+        while True:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    params = {
+                        "offset": self._offset,
+                        "timeout": 30,
+                    }
+                    async with session.get(
+                        f"{self._base_url}/getUpdates", params=params
+                    ) as resp:
+                        data = await resp.json()
 
-        logger.info(f"Otrzymano od bota: {text[:100]}...")
+                    if not data.get("ok"):
+                        logger.warning(f"getUpdates error: {data}")
+                        await asyncio.sleep(5)
+                        continue
 
-        if message.document:
-            self._last_document = message.document
-            self._last_message_id = message.id
+                    for update in data.get("result", []):
+                        self._offset = update["update_id"] + 1
+                        await self._process_update(update)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Polling error: {e}")
+                await asyncio.sleep(5)
+
+    async def _process_update(self, update: dict) -> None:
+        message = update.get("message")
+        if not message:
+            return
+
+        text = message.get("text", "")
+        document = message.get("document")
+
+        logger.info(f"Otrzymano: {text[:100] if text else '(document)'}")
+
+        if document:
+            file_id = document["file_id"]
+            file_name = document.get("file_name", "unknown")
+            self._last_filename = file_name
+            self._last_document_data = await self._download_file(file_id)
             self._file_event.set()
-            logger.info("Otrzymano plik")
+            logger.info(f"Otrzymano plik: {file_name}")
             return
 
         if self._waiting_for_selection:
@@ -67,68 +103,96 @@ class TelegramClientManager:
         self._last_response = text
         self._response_event.set()
 
-    async def send_search(self, query: str) -> Optional[str]:
-        if not self.client or not self.target_chat_id:
-            logger.error("Client nie jest połączony")
-            return None
+    async def _download_file(self, file_id: str) -> bytes:
+        """Pobiera plik z Telegram Bot API."""
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{self._base_url}/getFile", params={"file_id": file_id}
+            ) as resp:
+                data = await resp.json()
 
+            if not data.get("ok"):
+                raise Exception(f"getFile error: {data}")
+
+            file_path = data["result"]["file_path"]
+            url = f"https://api.telegram.org/file/bot{self.config.telegram_bot_token}/{file_path}"
+
+            async with session.get(url) as resp:
+                return await resp.read()
+
+    async def send_search(self, query: str) -> Optional[str]:
         self._response_event.clear()
         self._last_response = None
 
         command = f"/search {query}"
         logger.info(f"Wysyłanie: {command}")
-        await self.client.send_message(self.target_chat_id, command)
+
+        await self._send_message(self.config.target_bot_username, command)
 
         try:
-            await asyncio.wait_for(self._response_event.wait(), timeout=self.config.bot_response_timeout)
+            await asyncio.wait_for(
+                self._response_event.wait(), timeout=self.config.bot_response_timeout
+            )
             return self._last_response
         except asyncio.TimeoutError:
-            logger.warning(f"Timeout oczekiwania na odpowiedź bota ({self.config.bot_response_timeout}s)")
+            logger.warning(f"Timeout odpowiedzi bota ({self.config.bot_response_timeout}s)")
             return None
 
     async def send_selection(self, text: str) -> Optional[str]:
-        if not self.client or not self.target_chat_id:
-            return None
-
         self._response_event.clear()
         self._last_response = None
         self._waiting_for_selection = True
 
         logger.info(f"Wysyłanie selekcji: {text}")
-        await self.client.send_message(self.target_chat_id, text)
+        await self._send_message(self.config.target_bot_username, text)
 
         try:
-            await asyncio.wait_for(self._response_event.wait(), timeout=self.config.bot_response_timeout)
+            await asyncio.wait_for(
+                self._response_event.wait(), timeout=self.config.bot_response_timeout
+            )
             return self._last_response
         except asyncio.TimeoutError:
-            logger.warning("Timeout oczekiwania na odpowiedź po selekcji")
+            logger.warning("Timeout po selekcji")
             return None
 
     async def wait_for_file(self) -> Optional[tuple]:
-        if not self.client:
-            return None
-
         self._file_event.clear()
-        self._last_document = None
+        self._last_document_data = None
+        self._last_filename = None
 
         try:
-            await asyncio.wait_for(self._file_event.wait(), timeout=self.config.file_timeout)
+            await asyncio.wait_for(
+                self._file_event.wait(), timeout=self.config.file_timeout
+            )
         except asyncio.TimeoutError:
-            logger.warning(f"Timeout oczekiwania na plik ({self.config.file_timeout}s)")
+            logger.warning(f"Timeout pliku ({self.config.file_timeout}s)")
             return None
 
-        if not self._last_document:
+        if not self._last_document_data:
             return None
 
-        doc = self._last_document
-        filename = "unknown"
-        for attr in doc.attributes:
-            if isinstance(attr, DocumentAttributeFilename):
-                filename = attr.file_name
-                break
+        return (self._last_filename or "unknown", self._last_document_data, 0)
 
-        data = await self.client.download_media(doc, file=bytes)
-        return (filename, data, self._last_message_id)
+    async def _send_message(self, username: str, text: str) -> None:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{self._base_url}/getChat", params={"chat_id": f"@{username}"}
+            ) as resp:
+                data = await resp.json()
+
+            if not data.get("ok"):
+                logger.error(f"getChat error: {data}")
+                return
+
+            chat_id = data["result"]["id"]
+
+            async with session.post(
+                f"{self._base_url}/sendMessage",
+                json={"chat_id": chat_id, "text": text},
+            ) as resp:
+                result = await resp.json()
+                if not result.get("ok"):
+                    logger.error(f"sendMessage error: {result}")
 
     def is_ready(self) -> bool:
-        return self.client is not None and self.client.is_connected()
+        return self._polling_task is not None and not self._polling_task.done()
