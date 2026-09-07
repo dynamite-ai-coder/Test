@@ -1,0 +1,6 @@
+Niestety nie ma możliwości szukania wielu domen jednocześnie itd ale chcę stworzyć bota na telegram który będzie się komunikował przez API z linku z botem tmlogs. Chce wpisać w mojego bota np examplelink1.com
+examplelink2.com itd
+I chciałbym aby mój bot komunikując się z tmlogbot wykonał /search examplelink1.com następnie bot zapyta URL:login:pass czy login:pass. Niech mój bot na sztywno wybiera login:pass itd a następnie po sprawdzeniu wszystkich plików niech przesyła mi każdy plik txt z login:pass i niech każdy plik nazywa nazwadomeny
+link do API info tmlogbot 
+apikey mojego bota telegram 8997670334:AAGezPaGSCl5RvxDAX-X86uKUjq1GoDr6eg
+chciałbym jeszcze dodać żeby nazywał pliki nazwa domeny szukanych oraz niech mój bot zwraca także info o ilości lini w szukanych plikach 
