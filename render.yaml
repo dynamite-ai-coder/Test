@@ -1,5 +1,5 @@
 services:
-  - type: background_worker
+  - type: web
     name: telegram-automation
     runtime: python
     plan: free
@@ -28,3 +28,4 @@ services:
         value: "60"
       - key: FILE_TIMEOUT
         value: "180"
+    healthCheckPath: /health

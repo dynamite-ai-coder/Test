@@ -29,6 +29,7 @@ class Worker:
 
     async def run(self) -> None:
         self.control_bot.set_worker_control(self.control)
+        self._keepalive_task = asyncio.create_task(self._keepalive())
 
         while True:
             if self.control.get("stop"):
@@ -36,17 +37,30 @@ class Worker:
                 break
 
             if self.control.get("paused"):
-                await asyncio.sleep(1)
+                await asyncio.sleep(5)
                 continue
 
             item = await self.queue.get_next()
             if not item:
-                await asyncio.sleep(2)
+                await asyncio.sleep(5)
                 continue
 
             await self._process_item(item)
 
+        self._keepalive_task.cancel()
         logger.info("Worker zakończony.")
+
+    async def _keepalive(self) -> None:
+        """Keep-alive - ping co 10 min żeby Render nie zasypiał."""
+        while True:
+            await asyncio.sleep(600)
+            logger.info("Keep-alive ping")
+            chat_id = self.control_bot.get_chat_id()
+            if chat_id:
+                try:
+                    await self.control_bot.send_message(chat_id, "💓 Keep-alive")
+                except Exception:
+                    pass
 
     async def _process_item(self, item: Dict[str, Any]) -> None:
         item_id = item["id"]
