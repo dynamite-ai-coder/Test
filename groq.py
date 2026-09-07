@@ -3,6 +3,8 @@
 import time
 import json
 import threading
+import http.client
+import ssl
 import urllib.request
 import urllib.error
 
@@ -440,6 +442,23 @@ def retry_after(headers):
 # GROQ REQUEST
 # ============================================================
 
+def is_streaming(body):
+
+    try:
+
+        data = json.loads(
+            body.decode("utf-8")
+        )
+
+        return data.get(
+            "stream", False
+        )
+
+    except Exception:
+
+        return False
+
+
 def groq_request(
     path,
     body,
@@ -450,63 +469,90 @@ def groq_request(
     api_path = path
     if api_path.startswith("/v1"):
         api_path = api_path[3:]
-    url = GROQ_URL + api_path
+    api_path = "/openai/v1" + api_path
+
+    streaming = is_streaming(body)
+
+    auth_token = key_state.key
+
+    content_type = incoming_headers.get(
+        "Content-Type",
+        "application/json"
+    )
+
+    accept_type = incoming_headers.get(
+        "Accept",
+        "application/json"
+    )
 
     headers = {
         "Authorization":
-            "Bearer " + key_state.key,
-
-        "Content-Type":
-            incoming_headers.get(
-                "Content-Type",
-                "application/json"
-            ),
-
-        "Accept":
-            incoming_headers.get(
-                "Accept",
-                "application/json"
-            ),
-
+            "Bearer " + auth_token,
+        "Content-Type": content_type,
+        "Accept": accept_type,
         "User-Agent":
             "OpenCode-Groq-MultiKey-Proxy/1.0",
+        "Content-Length": str(len(body)),
     }
 
-    request = urllib.request.Request(
-        url,
-        data=body,
-        headers=headers,
-        method="POST"
-    )
+    ctx = ssl.create_default_context()
+
+    conn = None
 
     try:
 
-        with urllib.request.urlopen(
-            request,
-            timeout=REQUEST_TIMEOUT
-        ) as response:
+        conn = http.client.HTTPSConnection(
+            "api.groq.com",
+            timeout=REQUEST_TIMEOUT,
+            context=ctx
+        )
+
+        conn.request(
+            "POST",
+            api_path,
+            body=body,
+            headers=headers
+        )
+
+        response = conn.getresponse()
+
+        status = response.status
+        resp_headers = dict(response.getheaders())
+
+        if streaming:
 
             return (
-                response.status,
-                dict(response.headers),
-                response.read()
+                status,
+                resp_headers,
+                None,
+                response,
+                conn
             )
 
-    except urllib.error.HTTPError as error:
+        data = response.read()
+
+        conn.close()
 
         return (
-            error.code,
-            dict(error.headers),
-            error.read()
+            status,
+            resp_headers,
+            data,
+            None,
+            None
         )
 
     except Exception as error:
+
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
         payload = {
             "error": {
                 "type":
                     "proxy_connection_error",
-
                 "message":
                     str(error)
             }
@@ -515,7 +561,9 @@ def groq_request(
         return (
             502,
             {},
-            json.dumps(payload).encode()
+            json.dumps(payload).encode(),
+            None,
+            None
         )
 
 
@@ -791,28 +839,41 @@ class Handler(BaseHTTPRequestHandler):
         # REQUEST / RETRY
         # ----------------------------------------------------
 
+        streaming = is_streaming(body)
+
         for attempt in range(
             MAX_RETRIES + 1
         ):
 
-            status, headers, response = (
-                groq_request(
-                    self.path,
-                    body,
-                    key,
-                    self.headers
-                )
+            result = groq_request(
+                self.path,
+                body,
+                key,
+                self.headers
             )
+
+            status, headers, response, stream_obj, conn = result
 
 
             # Sukces / inny status
             if status != 429:
 
-                self.write_response(
-                    status,
-                    headers,
-                    response
-                )
+                if streaming and stream_obj:
+
+                    self.write_stream_response(
+                        status,
+                        headers,
+                        stream_obj,
+                        conn
+                    )
+
+                else:
+
+                    self.write_response(
+                        status,
+                        headers,
+                        response
+                    )
 
                 print(
                     f"[key {key.number}] "
@@ -877,11 +938,108 @@ class Handler(BaseHTTPRequestHandler):
 
 
         # Wszystkie retry zakończone
-        self.write_response(
-            status,
-            headers,
-            response
-        )
+        if streaming and stream_obj:
+
+            self.write_stream_response(
+                status,
+                headers,
+                stream_obj,
+                conn
+            )
+
+        else:
+
+            self.write_response(
+                status,
+                headers,
+                response
+            )
+
+
+    # --------------------------------------------------------
+    # STREAM RESPONSE
+    # --------------------------------------------------------
+
+    def write_stream_response(
+        self,
+        status,
+        headers,
+        stream_obj,
+        conn
+    ):
+
+        try:
+
+            self.send_response(status)
+
+            self.send_header(
+                "Content-Type",
+                "text/event-stream"
+            )
+
+            self.send_header(
+                "Cache-Control",
+                "no-cache"
+            )
+
+            self.send_header(
+                "Connection",
+                "keep-alive"
+            )
+
+            self.send_header(
+                "X-Accel-Buffering",
+                "no"
+            )
+
+            self.end_headers()
+
+            try:
+
+                while True:
+
+                    chunk = stream_obj.read(4096)
+
+                    if not chunk:
+
+                        break
+
+                    self.wfile.write(chunk)
+
+                    self.wfile.flush()
+
+            except (BrokenPipeError, ConnectionResetError):
+
+                pass
+
+            except Exception:
+
+                pass
+
+            finally:
+
+                try:
+
+                    conn.close()
+
+                except Exception:
+
+                    pass
+
+
+        except (BrokenPipeError, ConnectionResetError):
+
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        except Exception:
+
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
     # --------------------------------------------------------
