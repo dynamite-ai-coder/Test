@@ -68,7 +68,6 @@ class ControlBot:
 
     async def stop(self) -> None:
         if self.app:
-            await self.app.bot.delete_webhook()
             await self.app.shutdown()
 
     async def handle_webhook(self, request: web.Request) -> web.Response:
