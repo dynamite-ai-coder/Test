@@ -73,14 +73,17 @@ class ControlBot:
     async def handle_webhook(self, request: web.Request) -> web.Response:
         try:
             data = await request.json()
-            update = Update.de_json(data, self.app.bot)
 
             if self._client:
-                await self._client.process_update(update)
+                await self._client.process_update(data)
 
-            await self.app.process_update(update)
+            if self.app and self.app.bot:
+                update = Update.de_json(data, self.app.bot)
+                await self.app.process_update(update)
+            else:
+                logger.warning("App not initialized, webhook ignored")
         except Exception as e:
-            logger.error(f"Webhook error: {e}")
+            logger.error(f"Webhook error: {e}", exc_info=True)
         return web.Response(text="OK")
 
     def _check_auth(self, update: Update) -> bool:
