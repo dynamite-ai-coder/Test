@@ -35,8 +35,7 @@ class TelegramClientManager:
                 else:
                     logger.error(f"Błąd połączenia z bot API: {data}")
 
-        self._polling_task = asyncio.create_task(self._poll_updates())
-        logger.info("Polling uruchomiony")
+        logger.info("Telegram client gotowy (webhook mode)")
 
     async def stop(self) -> None:
         if self._polling_task:
@@ -193,6 +192,34 @@ class TelegramClientManager:
                 result = await resp.json()
                 if not result.get("ok"):
                     logger.error(f"sendMessage error: {result}")
+
+    async def process_update(self, update: dict) -> None:
+        message = update.get("message")
+        if not message:
+            return
+
+        text = message.get("text", "")
+        document = message.get("document")
+
+        logger.info(f"Otrzymano (webhook): {text[:100] if text else '(document)'}")
+
+        if document:
+            file_id = document["file_id"]
+            file_name = document.get("file_name", "unknown")
+            self._last_filename = file_name
+            self._last_document_data = await self._download_file(file_id)
+            self._file_event.set()
+            logger.info(f"Otrzymano plik: {file_name}")
+            return
+
+        if self._waiting_for_selection:
+            self._last_response = text
+            self._response_event.set()
+            self._waiting_for_selection = False
+            return
+
+        self._last_response = text
+        self._response_event.set()
 
     def is_ready(self) -> bool:
         return self._polling_task is not None and not self._polling_task.done()

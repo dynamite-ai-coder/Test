@@ -33,7 +33,11 @@ class ControlBot:
     def set_worker_control(self, control: Dict[str, Any]) -> None:
         self.worker_control = control
 
+    def set_client(self, client) -> None:
+        self._client = client
+
     async def start(self) -> None:
+        self._client = None
         self.app = Application.builder().token(self.config.telegram_bot_token).build()
 
         self.app.add_handler(CommandHandler("start", self.cmd_start))
@@ -71,6 +75,10 @@ class ControlBot:
         try:
             data = await request.json()
             update = Update.de_json(data, self.app.bot)
+
+            if self._client:
+                await self._client.process_update(update)
+
             await self.app.process_update(update)
         except Exception as e:
             logger.error(f"Webhook error: {e}")

@@ -45,6 +45,7 @@ async def main() -> None:
 
     try:
         await control_bot.start()
+        control_bot.set_client(client)
 
         app = web.Application()
         app.router.add_get("/", health_handler)
