@@ -1,3 +1,6 @@
+import os
+import json
+from aiohttp import web
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -11,10 +14,10 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional
 
 from config import Config
-from queue_manager import QueueManager, normalize_url
+from queue_manager import QueueManager
 from logger import setup_logger
 
 logger = setup_logger("control_bot")
@@ -37,7 +40,6 @@ class ControlBot:
         self.app.add_handler(CommandHandler("add", self.cmd_add))
         self.app.add_handler(CommandHandler("addlist", self.cmd_addlist))
         self.app.add_handler(CommandHandler("queue", self.cmd_queue))
-        self.app.add_handler(CommandHandler("startqueue", self.cmd_start))
         self.app.add_handler(CommandHandler("pause", self.cmd_pause))
         self.app.add_handler(CommandHandler("resume", self.cmd_resume))
         self.app.add_handler(CommandHandler("stop", self.cmd_stop))
@@ -49,16 +51,30 @@ class ControlBot:
             MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text)
         )
 
-        logger.info("Control bot uruchomiony")
         await self.app.initialize()
-        await self.app.start()
-        await self.app.updater.start_polling()
+
+        port = int(os.environ.get("PORT", "10000"))
+        url = os.environ.get("RENDER_EXTERNAL_URL", f"https://{os.environ.get('RENDER_SERVICE_SLUG', 'localhost')}.onrender.com")
+
+        await self.app.bot.set_webhook(
+            url=f"{url}/telegram/webhook",
+            allowed_updates=Update.ALL_TYPES,
+        )
+        logger.info(f"Webhook ustawiony: {url}/telegram/webhook")
 
     async def stop(self) -> None:
         if self.app:
-            await self.app.updater.stop()
-            await self.app.stop()
+            await self.app.bot.delete_webhook()
             await self.app.shutdown()
+
+    async def handle_webhook(self, request: web.Request) -> web.Response:
+        try:
+            data = await request.json()
+            update = Update.de_json(data, self.app.bot)
+            await self.app.process_update(update)
+        except Exception as e:
+            logger.error(f"Webhook error: {e}")
+        return web.Response(text="OK")
 
     def _check_auth(self, update: Update) -> bool:
         user_id = update.effective_user.id
@@ -78,7 +94,7 @@ class ControlBot:
                 InlineKeyboardButton("📊 Status", callback_data="status"),
             ],
             [
-                InlineKeyboardButton("▶️ Start", callback_data="start"),
+                InlineKeyboardButton("▶️ Start", callback_data="startqueue"),
                 InlineKeyboardButton("⏸ Pause", callback_data="pause"),
                 InlineKeyboardButton("⏹ Stop", callback_data="stop"),
             ],
@@ -215,7 +231,7 @@ class ControlBot:
                 f"Done: {completed}/{total} | "
                 f"Failed: {stats.get('failed', 0)}"
             )
-        elif data == "start":
+        elif data == "startqueue":
             await query.answer()
             if self.worker_control:
                 self.worker_control["paused"] = False

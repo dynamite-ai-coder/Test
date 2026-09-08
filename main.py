@@ -19,19 +19,6 @@ async def health_handler(request: web.Request) -> web.Response:
     return web.Response(text="OK", status=200)
 
 
-async def start_health_server() -> web.TCPSite:
-    app = web.Application()
-    app.router.add_get("/", health_handler)
-    app.router.add_get("/health", health_handler)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    port = int(os.environ.get("PORT", "8080"))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-    logger.info(f"Health server uruchomiony na porcie {port}")
-    return site
-
-
 async def main() -> None:
     config = Config.from_env()
     config.ensure_dirs()
@@ -57,9 +44,21 @@ async def main() -> None:
         loop.add_signal_handler(sig, shutdown)
 
     try:
-        await start_health_server()
-        await client.start()
         await control_bot.start()
+
+        app = web.Application()
+        app.router.add_get("/", health_handler)
+        app.router.add_get("/health", health_handler)
+        app.router.add_post("/telegram/webhook", control_bot.handle_webhook)
+
+        runner = web.AppRunner(app)
+        await runner.setup()
+        port = int(os.environ.get("PORT", "10000"))
+        site = web.TCPSite(runner, "0.0.0.0", port)
+        await site.start()
+        logger.info(f"HTTP server na porcie {port}")
+
+        await client.start()
 
         logger.info("System gotowy. Worker uruchomiony.")
         await worker.run()
