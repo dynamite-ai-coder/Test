@@ -1173,4 +1173,4 @@ After completing the implementation, provide:
 
 Do not print any secret values in the final response.
 
-Before finishing, verify that no real credentials remain anywhere in the repository.
+Before finishing, verify that no real credentials remain anywhere in the repository.w
