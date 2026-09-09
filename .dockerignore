@@ -1,0 +1,14 @@
+.env
+.git
+.gitignore
+pycache/
+*.pyc
+*.session
+data/
+tmp/
+downloads/
+__pycache__/
+*.pyc
+.env.example
+README.md
+DEPLOY_RENDER.md

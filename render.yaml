@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: telegram-terabox
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_API_ID
+        sync: false
+      - key: TELEGRAM_API_HASH
+        sync: false
+      - key: TELEGRAM_SESSION
+        sync: false
+      - key: PUBLIC_URL
+        generateValue: false
+      - key: WEBHOOK_SECRET
+        generateValue: false
+      - key: ALLOWED_USER_ID
+        value: "0"
+      - key: MIN_SIZE_BYTES
+        value: "10485760"
+      - key: MAX_SIZE_BYTES
+        value: "4294967296"
+      - key: DOWNLOAD_DIR
+        value: "/tmp/tg_downloads"
+      - key: DATA_DIR
+        value: "/data"
+      - key: TERABOX_NDUS
+        sync: false
+      - key: TERABOX_APP_ID
+        value: "250528"
+      - key: TERABOX_UPLOAD_ID
+        sync: false
+      - key: TERABOX_JS_TOKEN
+        sync: false
+      - key: TERABOX_BROWSER_ID
+        sync: false
+      - key: TERABOX_REMOTE_DIR
+        value: "/"
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 10
