@@ -1,0 +1,1176 @@
+You are working on a Python project called "Telegram → TeraBox".
+
+Build and configure the complete application for:
+
+GitHub → Render
+
+The application must use Telegram Bot API, Telethon, and TeraBox.
+
+IMPORTANT:
+The Telegram credentials below are provided by the project owner for this test project. Use them as configuration values, but NEVER commit them to GitHub, Docker images, source code, README files, logs, or public configuration files.
+
+==================================================
+
+1. TELEGRAM CONFIGURATION PROVIDED BY THE OWNER
+   ==================================================
+
+Use these values when configuring the application's environment variables:
+
+TELEGRAM_BOT_TOKEN=
+8997670334:AAGezPaGSCl5RvxDAX-X86uKUjq1GoDr6eg
+
+TELEGRAM_API_ID=
+30807992
+
+TELEGRAM_API_HASH=
+4648958078f4e7b92bfe6674af21da58
+
+The values must ultimately be stored as environment variables.
+
+Do NOT hard-code them inside app.py.
+
+Do NOT put them into GitHub.
+
+Do NOT put them into Dockerfile.
+
+Do NOT put them into Docker image layers.
+
+Do NOT print them in logs.
+
+==================================================
+2. PROJECT GOAL
+
+Create a Telegram-controlled service that:
+
+1. Receives commands from a Telegram bot.
+2. Uses Telethon user authentication to access Telegram channels.
+3. Searches channels for documents.
+4. Processes ONLY .txt files.
+5. Accepts files from 10 MiB through 4 GiB.
+6. Downloads files to disk instead of RAM.
+7. Uploads them to TeraBox.
+8. Deletes the local temporary file after successful upload.
+9. Provides job status and cancellation.
+10. Runs continuously on Render.
+11. Uses GitHub as the source repository.
+12. Supports automatic Render deployment after GitHub changes.
+
+Architecture:
+
+GitHub
+|
+v
+Render
+|
+v
+Python Web Service
+|
++----------------------+
+|                      |
+v                      v
+Telegram Bot API      Telethon
+|                      |
+|                      v
+|                Telegram channels
+|                      |
+|                      v
+|                   .txt files
+|                      |
+|                      v
+|                 Temporary disk
+|                      |
+|                      v
+|                   TeraBox
+|
+v
+Telegram user
+
+==================================================
+3. PROJECT STRUCTURE
+
+Create:
+
+telegram-terabox/
+
+├── app.py
+├── session_generator.py
+├── requirements.txt
+├── render.yaml
+├── Dockerfile
+├── .dockerignore
+├── .gitignore
+├── .env.example
+├── README.md
+├── DEPLOY_RENDER.md
+└── data/
+└── .gitkeep
+
+Additional modules may be created if they improve code quality.
+
+Prefer separating:
+
+telegram logic
+telethon logic
+job queue
+database
+terabox uploader
+configuration
+utilities
+
+Do not put the entire application into one giant function.
+
+==================================================
+4. TELEGRAM BOT
+
+Use Telegram Bot API for user commands.
+
+Commands:
+
+/start
+/help
+/whoami
+/status
+/jobs
+/add @channel
+/stop JOB_ID
+
+The bot token must come from:
+
+TELEGRAM_BOT_TOKEN
+
+Never hard-code it.
+
+==================================================
+5. TELEGRAM WEBHOOK
+
+Use Flask as the web server.
+
+Telegram Bot API should send updates to the Render Web Service.
+
+Environment variables:
+
+PUBLIC_URL
+WEBHOOK_SECRET
+
+Use Telegram's secret webhook token mechanism.
+
+Validate:
+
+X-Telegram-Bot-Api-Secret-Token
+
+when WEBHOOK_SECRET is configured.
+
+Create:
+
+GET /
+GET /health
+
+Both should return:
+
+{
+"status": "ok"
+}
+
+These endpoints must not require Telegram authentication.
+
+==================================================
+6. TELETHON USER CLIENT
+
+Use Telethon separately from the Bot API.
+
+Read:
+
+TELEGRAM_API_ID
+TELEGRAM_API_HASH
+TELEGRAM_SESSION
+
+from environment variables.
+
+Use:
+
+StringSession
+
+The application must not require interactive Telegram login every time Render restarts.
+
+Create:
+
+session_generator.py
+
+The session generator must:
+
+1. Ask for API ID.
+2. Ask for API HASH.
+3. Ask for phone number.
+4. Send Telegram login code.
+5. Handle 2FA.
+6. Generate StringSession.
+7. Print it once.
+8. Warn that the StringSession is sensitive.
+
+The API ID and API hash supplied above may be used as default input when generating the session, but do not hard-code them into the final application.
+
+==================================================
+7. IMPORTANT TELEGRAM SEPARATION
+
+The Telegram Bot API and Telethon user client have different purposes.
+
+Bot API:
+
+- receives commands
+- sends status messages
+- communicates with the user
+
+Telethon:
+
+- connects as the authorized user account
+- accesses channels
+- reads messages
+- downloads documents
+
+Do not incorrectly use the bot account as the Telethon user account.
+
+==================================================
+8. CHANNEL PROCESSING
+
+Implement:
+
+/add @channel
+
+The command creates a background job.
+
+Do not perform large downloads inside the Flask webhook request.
+
+The webhook must return quickly.
+
+Use a background queue.
+
+==================================================
+9. FILE FILTER
+
+Only process:
+
+.txt
+
+Extension checking must be case-insensitive.
+
+Accept:
+
+file.txt
+FILE.TXT
+example.TxT
+
+Reject:
+
+file.pdf
+file.zip
+file.rar
+file.jpg
+file.mp4
+
+==================================================
+10. FILE SIZE FILTER
+
+Minimum:
+
+10 MiB
+
+Maximum:
+
+4 GiB
+
+Use:
+
+MIN_SIZE_BYTES = 10 * 1024 * 1024
+
+MAX_SIZE_BYTES = 4 * 1024 * 1024 * 1024
+
+Check the Telegram document size before starting the download.
+
+Do not download files outside this range.
+
+==================================================
+11. LARGE FILE HANDLING
+
+This is extremely important.
+
+The service must support files up to 4 GiB.
+
+NEVER load a complete 4 GiB file into RAM.
+
+Do not use full-memory buffering.
+
+Use a disk-based temporary file.
+
+Default:
+
+DOWNLOAD_DIR=/tmp/tg_downloads
+
+Make DOWNLOAD_DIR configurable.
+
+Before downloading:
+
+1. Determine file size.
+2. Check available disk space.
+3. Require additional safety margin.
+4. Download to disk.
+
+RAM consumption must remain relatively small regardless of file size.
+
+==================================================
+12. TERABOX
+
+Create a separate TeraBox adapter.
+
+Environment variables:
+
+TERABOX_NDUS
+TERABOX_APP_ID
+TERABOX_UPLOAD_ID
+TERABOX_JS_TOKEN
+TERABOX_BROWSER_ID
+TERABOX_REMOTE_DIR
+
+Use the existing TeraBox uploader implementation if available.
+
+If using:
+
+terabox-uploader
+
+keep it isolated behind an adapter.
+
+The uploader should receive:
+
+local_file_path
+
+rather than a complete file in memory.
+
+After successful upload:
+
+1. Confirm upload success.
+2. Update job status.
+3. Delete the local temporary file.
+
+If upload fails:
+
+- mark the job as failed
+- do not expose credentials
+- preserve the file only when needed for retry/debugging
+- clean temporary files according to the cleanup policy
+
+==================================================
+13. JOB QUEUE
+
+Implement a real background job queue.
+
+Default concurrency:
+
+1
+
+Reason:
+
+Files may be as large as 4 GiB.
+
+Architecture:
+
+Flask
+|
+v
+Telegram command
+|
+v
+Job Queue
+|
+v
+Background Worker
+|
++--> Telethon
+|
++--> Disk
+|
++--> TeraBox
+|
+v
+Cleanup
+
+The worker must survive individual job failures.
+
+==================================================
+14. SQLITE DATABASE
+
+Use SQLite.
+
+Store:
+
+job_id
+user_id
+channel
+status
+created_at
+started_at
+finished_at
+current_file
+files_found
+files_uploaded
+files_failed
+error_message
+
+Statuses:
+
+queued
+running
+completed
+stopped
+failed
+
+Do NOT store:
+
+Telegram bot token
+Telegram API hash
+Telegram session
+TeraBox cookies
+Render API key
+Docker credentials
+
+Use:
+
+DATA_DIR
+
+Default:
+
+/data
+
+When running on Render, allow SQLite to be stored on a Persistent Disk.
+
+==================================================
+15. USER AUTHORIZATION
+
+Use:
+
+ALLOWED_USER_ID
+
+If:
+
+ALLOWED_USER_ID=0
+
+allow all users for testing.
+
+Otherwise only the configured Telegram numeric user ID may use the bot.
+
+Implement:
+
+/whoami
+
+to display the numeric Telegram user ID.
+
+Do not use usernames as the primary authentication method.
+
+==================================================
+16. STOP JOB
+
+Implement:
+
+/stop JOB_ID
+
+The worker must support cancellation.
+
+When a job is stopped:
+
+- stop processing as soon as safely possible
+- cancel the current operation when possible
+- remove incomplete temporary downloads
+- mark the job as stopped
+
+==================================================
+17. STATUS
+
+Implement:
+
+/status
+
+Show:
+
+Application status
+Worker status
+Current job
+Current file
+Files found
+Files uploaded
+Files failed
+
+Never expose secrets.
+
+==================================================
+18. JOB LIST
+
+Implement:
+
+/jobs
+
+Show recent jobs:
+
+Job ID
+Channel
+Status
+Files found
+Files uploaded
+Files failed
+Created time
+
+==================================================
+19. ENVIRONMENT VARIABLES
+
+Create:
+
+.env.example
+
+Use placeholders only.
+
+It must contain:
+
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_API_ID=
+TELEGRAM_API_HASH=
+TELEGRAM_SESSION=
+
+PUBLIC_URL=
+WEBHOOK_SECRET=
+
+ALLOWED_USER_ID=0
+
+MIN_SIZE_BYTES=10485760
+MAX_SIZE_BYTES=4294967296
+
+DOWNLOAD_DIR=/tmp/tg_downloads
+DATA_DIR=/data
+
+TERABOX_NDUS=
+TERABOX_APP_ID=250528
+TERABOX_UPLOAD_ID=
+TERABOX_JS_TOKEN=
+TERABOX_BROWSER_ID=
+TERABOX_REMOTE_DIR=/
+
+Never place the real Telegram values in ".env.example".
+
+==================================================
+20. RENDER ENVIRONMENT
+
+The following values must be configured as Render Environment Variables:
+
+TELEGRAM_BOT_TOKEN
+TELEGRAM_API_ID
+TELEGRAM_API_HASH
+TELEGRAM_SESSION
+PUBLIC_URL
+WEBHOOK_SECRET
+ALLOWED_USER_ID
+MIN_SIZE_BYTES
+MAX_SIZE_BYTES
+DOWNLOAD_DIR
+DATA_DIR
+TERABOX_NDUS
+TERABOX_APP_ID
+TERABOX_UPLOAD_ID
+TERABOX_JS_TOKEN
+TERABOX_BROWSER_ID
+TERABOX_REMOTE_DIR
+
+The real Telegram credentials supplied in section 1 are initial configuration values for this test deployment.
+
+Do not commit them to GitHub.
+
+==================================================
+21. RENDER.YAML
+
+Create a valid:
+
+render.yaml
+
+for a Render Web Service connected to GitHub.
+
+Use the correct current Render Blueprint syntax.
+
+The service must:
+
+- run on Render
+- listen on 0.0.0.0
+- use the Render PORT variable
+- support Docker
+- support persistent storage
+- support environment variables
+- support health checks
+
+Do not put secrets directly into render.yaml.
+
+If Render requires secret values to be configured through the dashboard, clearly document that.
+
+==================================================
+22. RENDER PERSISTENT DISK
+
+The application can process 4 GiB files.
+
+RAM and disk are different resources.
+
+Do not assume:
+
+8 GB RAM = 8 GB disk.
+
+Configure the application so that large files are stored on disk.
+
+Use a Render Persistent Disk for:
+
+temporary files
+SQLite database
+
+when appropriate.
+
+Use configurable paths.
+
+Document the recommended disk size.
+
+==================================================
+23. DOCKERFILE
+
+Create a clean production Dockerfile.
+
+Requirements:
+
+- Python 3
+- install requirements
+- copy source
+- create required directories
+- expose application port
+- start application
+
+The image must support:
+
+linux/amd64
+
+Do not copy:
+
+.env
+
+into the Docker image.
+
+Do not copy:
+
+*.session
+
+into the Docker image.
+
+==================================================
+24. DOCKERIGNORE
+
+Create:
+
+.dockerignore
+
+Exclude:
+
+.env
+.git
+.gitignore
+pycache
+*.pyc
+.session
+data/
+tmp/
+downloads/
+
+==================================================
+25. GITIGNORE
+
+Create:
+
+.gitignore
+
+with:
+
+.env
+*.session
+pycache/
+.pyc
+data/
+tmp/
+downloads/
+
+Keep:
+
+data/.gitkeep
+
+==================================================
+26. STARTUP VALIDATION
+
+At startup:
+
+1. Load environment variables.
+2. Validate required variables.
+3. Create directories.
+4. Initialize database.
+5. Start worker.
+6. Start Flask.
+7. Configure Telegram webhook if PUBLIC_URL is configured.
+
+If required configuration is missing:
+
+- show only the variable NAME
+- never show its value
+- clearly report the problem
+
+==================================================
+27. ERROR HANDLING
+
+Handle:
+
+FloodWaitError
+Telegram RPC errors
+invalid channel
+missing permissions
+download errors
+network errors
+disk full
+TeraBox errors
+database errors
+invalid configuration
+worker exceptions
+
+One failed job must not terminate the entire service.
+
+==================================================
+28. LOGGING
+
+Use:
+
+[WEB]
+[TELEGRAM]
+[TELETHON]
+[QUEUE]
+[DOWNLOAD]
+[UPLOAD]
+[DATABASE]
+[ERROR]
+
+Never log:
+
+TELEGRAM_BOT_TOKEN
+TELEGRAM_API_HASH
+TELEGRAM_SESSION
+TERABOX_NDUS
+TERABOX_JS_TOKEN
+Render API keys
+Docker credentials
+
+==================================================
+29. TERMUX SUPPORT
+
+The project should also work locally on Android/Termux where dependencies permit.
+
+Document:
+
+termux-setup-storage
+
+Then:
+
+cd ~/storage/downloads/tele
+
+Install:
+
+pkg update
+pkg install python
+pip install -r requirements.txt
+
+Run:
+
+python app.py
+
+Document any dependencies that cannot work natively on Termux.
+
+==================================================
+30. SESSION GENERATION
+
+Provide exact instructions:
+
+python session_generator.py
+
+The user should generate the Telegram StringSession locally.
+
+Then place the resulting value into:
+
+TELEGRAM_SESSION
+
+on Render.
+
+Never commit the StringSession.
+
+==================================================
+31. GITHUB WORKFLOW
+
+The final deployment workflow should be:
+
+Local project
+|
+v
+Git
+|
+v
+GitHub repository
+|
+v
+Render
+|
+v
+Automatic build
+|
+v
+Automatic deployment
+|
+v
+Running Web Service
+
+Provide commands:
+
+git init
+git add .
+git commit
+git branch
+git remote add origin
+git push
+
+Use placeholders for the GitHub repository URL.
+
+Never put credentials inside Git URLs.
+
+==================================================
+32. RENDER AUTOMATIC DEPLOYMENT
+
+Configure the project so that:
+
+GitHub push
+↓
+Render detects commit
+↓
+Render builds application
+↓
+Render deploys new version
+
+Do not require the Render API key inside the application.
+
+The Render API key is only for external Render management.
+
+Never commit it to GitHub.
+
+==================================================
+33. HEALTH CHECK
+
+Implement:
+
+GET /
+
+and:
+
+GET /health
+
+Response:
+
+{
+"status": "ok"
+}
+
+Use the health endpoint for Render health checks.
+
+==================================================
+34. SECURITY AUDIT
+
+Before finishing, scan every project file.
+
+Search for:
+
+8997670334
+AAGezPaGSCl5RvxDAX-X86uKUjq1GoDr6eg
+30807992
+4648958078f4e7b92bfe6674af21da58
+TELEGRAM_BOT_TOKEN
+TELEGRAM_API_HASH
+TELEGRAM_SESSION
+TERABOX_NDUS
+TERABOX_JS_TOKEN
+Render API
+password
+token
+secret
+
+The real Telegram token/API hash must NOT remain in source code.
+
+The API ID is not considered a secret, but still use the environment variable.
+
+Replace real credentials with:
+
+os.getenv(...)
+
+or the appropriate configuration system.
+
+==================================================
+35. TESTING
+
+Run:
+
+python -m compileall .
+
+Fix all syntax errors.
+
+Verify:
+
+app.py
+session_generator.py
+requirements.txt
+Dockerfile
+render.yaml
+.env.example
+.gitignore
+.dockerignore
+
+Verify:
+
+GET /
+GET /health
+
+Verify:
+
+/start
+/whoami
+/status
+/jobs
+
+Verify:
+
+/add @channel
+
+Verify:
+
+/stop JOB_ID
+
+Verify:
+
+.txt filtering
+
+Verify:
+
+10 MiB minimum
+
+Verify:
+
+4 GiB maximum
+
+Verify:
+
+temporary file cleanup
+
+==================================================
+36. LARGE FILE TEST PLAN
+
+Test progressively:
+
+10 MB
+100 MB
+500 MB
+1 GB
+2 GB
+4 GB
+
+Confirm that RAM usage does not increase proportionally to file size.
+
+Confirm:
+
+Telegram download
+↓
+disk
+↓
+TeraBox upload
+↓
+delete local file
+
+==================================================
+37. README
+
+Create a detailed beginner-friendly README.md.
+
+Include:
+
+- project purpose
+- architecture
+- requirements
+- Telegram Bot setup
+- Telegram API setup
+- StringSession generation
+- environment variables
+- local Termux setup
+- GitHub setup
+- Render setup
+- Persistent Disk setup
+- TeraBox setup
+- Telegram commands
+- troubleshooting
+- security
+
+Never put real credentials in README.md.
+
+==================================================
+38. DEPLOY_RENDER.MD
+
+Create:
+
+DEPLOY_RENDER.md
+
+Include exact step-by-step instructions:
+
+STEP 1
+Create GitHub repository.
+
+STEP 2
+Push the project to GitHub.
+
+STEP 3
+Connect GitHub repository to Render.
+
+STEP 4
+Create Render Web Service.
+
+STEP 5
+Select Docker runtime if using Docker.
+
+STEP 6
+Configure environment variables.
+
+STEP 7
+Configure Telegram credentials.
+
+STEP 8
+Generate and configure TELEGRAM_SESSION.
+
+STEP 9
+Configure TeraBox credentials.
+
+STEP 10
+Set PUBLIC_URL.
+
+STEP 11
+Set WEBHOOK_SECRET.
+
+STEP 12
+Set ALLOWED_USER_ID.
+
+STEP 13
+Attach Persistent Disk.
+
+STEP 14
+Deploy.
+
+STEP 15
+Open:
+
+/health
+
+STEP 16
+Test:
+
+/start
+
+/whoami
+
+STEP 17
+Test a small .txt file.
+
+STEP 18
+Test larger files.
+
+==================================================
+39. FINAL SECURITY REQUIREMENT
+
+The real Telegram credentials supplied in this prompt are authorized test-project credentials.
+
+Use them to configure the test deployment if environment configuration is being performed.
+
+However:
+
+NEVER commit them.
+
+NEVER put them into GitHub.
+
+NEVER put them into Docker.
+
+NEVER put them into README.
+
+NEVER print them.
+
+NEVER include them in error messages.
+
+Store them only as protected environment variables.
+
+==================================================
+40. FINAL RESULT
+
+The finished system must work like this:
+
+Telegram user
+|
+v
+Telegram Bot
+|
+v
+Flask webhook on Render
+|
+v
+Background job queue
+|
+v
+Telethon user client
+|
+v
+Telegram channel
+|
+v
+Find .txt files
+|
+v
+Check 10 MiB – 4 GiB
+|
+v
+Download to disk
+|
+v
+TeraBox upload
+|
+v
+Confirm upload
+|
+v
+Delete local temporary file
+|
+v
+Update job database
+|
+v
+Report status to Telegram
+
+The application must be optimized for large files and must NOT load a complete 4 GiB file into RAM.
+
+==================================================
+41. FINAL OPENCODE RESPONSE
+
+After completing the implementation, provide:
+
+1. Summary of changes.
+2. Final project tree.
+3. GitHub setup commands.
+4. Render setup instructions.
+5. Complete environment variable list.
+6. Telegram session generation instructions.
+7. Persistent Disk configuration.
+8. Termux test commands.
+9. Docker test commands.
+10. Telegram test procedure.
+11. Known limitations.
+
+Do not print any secret values in the final response.
+
+Before finishing, verify that no real credentials remain anywhere in the repository.
