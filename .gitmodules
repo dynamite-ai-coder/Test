@@ -1,0 +1,3 @@
+[submodule "OpenBullet2"]
+	path = OpenBullet2
+	url = https://github.com/openbullet/OpenBullet2.git

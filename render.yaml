@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: openbullet2
+    runtime: docker
+    plan: free
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: PORT
+        value: 10000
+    healthCheckPath: /
+    autoDeploy: true
