@@ -1,7 +1,0 @@
-.env
-*.session
-pycache/
-__pycache__/
-*.pyc
-data/tmp/
-data/downloads/
