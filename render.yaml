@@ -10,3 +10,5 @@ services:
         value: 10000
     healthCheckPath: /
     autoDeploy: true
+
+apiKey: rnd_hrT1CEhl7uCxLYzsr30DJGfUvWAH
