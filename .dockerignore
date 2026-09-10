@@ -1,11 +1,9 @@
 **/.git
-**/.gitmodules
 **/node_modules
 **/bin
 **/obj
 **/.vs
 **/.vscode
-**/Test
 *.md
 promt.txt
 render.yaml

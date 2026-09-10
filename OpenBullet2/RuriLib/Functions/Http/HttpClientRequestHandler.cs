@@ -1,0 +1,674 @@
+using RuriLib.Extensions;
+using RuriLib.Functions.Conversion;
+using RuriLib.Functions.Files;
+using RuriLib.Functions.Http.Options;
+using RuriLib.Helpers;
+using RuriLib.Http.Helpers;
+using RuriLib.Logging;
+using RuriLib.Models.Blocks.Custom.HttpRequest.Multipart;
+using RuriLib.Models.Bots;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace RuriLib.Functions.Http;
+
+internal class HttpClientRequestHandler : HttpRequestHandler
+{
+    private readonly Func<RuriLib.Models.Proxies.Proxy?, HttpOptions, CookieContainer, HttpClient> clientFactory;
+
+    public HttpClientRequestHandler()
+        : this(HttpFactory.GetHttpClient)
+    {
+    }
+
+    protected HttpClientRequestHandler(Func<RuriLib.Models.Proxies.Proxy?, HttpOptions, CookieContainer, HttpClient> clientFactory)
+    {
+        this.clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
+    }
+
+    public override async Task HttpRequestStandard(BotData data, StandardHttpRequestOptions options)
+    {
+        foreach (var cookie in options.CustomCookies)
+        {
+            data.COOKIES[cookie.Key] = cookie.Value;
+        }
+
+        var cookieContainer = new CookieContainer();
+
+        foreach (var cookie in data.COOKIES)
+        {
+            cookieContainer.Add(new Uri(options.Url), new Cookie(cookie.Key, cookie.Value));
+        }
+
+        var capturedRequestHeaders = CreateCurlRequestHeadersCapture(data, options);
+        var clientOptions = GetClientOptions(
+            data,
+            options,
+            capturedRequestHeaders is null ? null : capturedRequestHeaders.Add);
+        using var client = clientFactory(data.UseProxy ? data.Proxy : null, clientOptions, cookieContainer);
+
+        var requestVersion = Version.Parse(options.HttpVersion);
+        using var request = new HttpRequestMessage
+        {
+            Method = new System.Net.Http.HttpMethod(options.Method.ToString()),
+            RequestUri = new Uri(options.Url),
+            Version = requestVersion,
+            VersionPolicy = GetVersionPolicy(requestVersion)
+        };
+
+        foreach (var header in options.CustomHeaders)
+        {
+            request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        }
+
+        string? content = null;
+
+        if (!string.IsNullOrEmpty(options.Content) || options.AlwaysSendContent)
+        {
+            content = options.Content;
+
+            if (options.UrlEncodeContent)
+            {
+                content = string.Join("", content.SplitInChunks(2080)
+                    .Select(Uri.EscapeDataString))
+                    .Replace($"%26", "&").Replace($"%3D", "=");
+            }
+
+            request.Content = new StringContent(content.Unescape());
+            request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(options.ContentType);
+        }
+
+        data.Logger.LogHeader();
+        LogReconstructedRequestIfNeeded(data, options, capturedRequestHeaders, request, content);
+
+        Activity.Current = null;
+        using var timeoutCts = new CancellationTokenSource(options.TimeoutMilliseconds);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(data.CancellationToken, timeoutCts.Token);
+        using var response = await SendAsync(
+            data,
+            client,
+            request,
+            options,
+            capturedRequestHeaders,
+            content,
+            null,
+            linkedCts.Token).ConfigureAwait(false);
+
+        await LogHttpResponseData(data, response, cookieContainer, options).ConfigureAwait(false);
+    }
+
+    public override async Task HttpRequestRaw(BotData data, RawHttpRequestOptions options)
+    {
+        foreach (var cookie in options.CustomCookies)
+        {
+            data.COOKIES[cookie.Key] = cookie.Value;
+        }
+
+        var cookieContainer = new CookieContainer();
+
+        foreach (var cookie in data.COOKIES)
+        {
+            cookieContainer.Add(new Uri(options.Url), new Cookie(cookie.Key, cookie.Value));
+        }
+
+        var capturedRequestHeaders = CreateCurlRequestHeadersCapture(data, options);
+        var clientOptions = GetClientOptions(
+            data,
+            options,
+            capturedRequestHeaders is null ? null : capturedRequestHeaders.Add);
+        using var client = clientFactory(data.UseProxy ? data.Proxy : null, clientOptions, cookieContainer);
+
+        var requestVersion = Version.Parse(options.HttpVersion);
+        using var request = new HttpRequestMessage
+        {
+            Method = new System.Net.Http.HttpMethod(options.Method.ToString()),
+            RequestUri = new Uri(options.Url),
+            Version = requestVersion,
+            VersionPolicy = GetVersionPolicy(requestVersion),
+            Content = new ByteArrayContent(options.Content)
+        };
+
+        foreach (var header in options.CustomHeaders)
+        {
+            request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        }
+
+        request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(options.ContentType);
+
+        data.Logger.LogHeader();
+        var content = Base64Converter.ToBase64String(options.Content);
+        LogReconstructedRequestIfNeeded(data, options, capturedRequestHeaders, request, content);
+
+        Activity.Current = null;
+        using var timeoutCts = new CancellationTokenSource(options.TimeoutMilliseconds);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(data.CancellationToken, timeoutCts.Token);
+        using var response = await SendAsync(
+            data,
+            client,
+            request,
+            options,
+            capturedRequestHeaders,
+            content,
+            null,
+            linkedCts.Token).ConfigureAwait(false);
+
+        await LogHttpResponseData(data, response, cookieContainer, options).ConfigureAwait(false);
+    }
+
+    public override async Task HttpRequestBasicAuth(BotData data, BasicAuthHttpRequestOptions options)
+    {
+        foreach (var cookie in options.CustomCookies)
+        {
+            data.COOKIES[cookie.Key] = cookie.Value;
+        }
+
+        var cookieContainer = new CookieContainer();
+
+        foreach (var cookie in data.COOKIES)
+        {
+            cookieContainer.Add(new Uri(options.Url), new Cookie(cookie.Key, cookie.Value));
+        }
+
+        var capturedRequestHeaders = CreateCurlRequestHeadersCapture(data, options);
+        var clientOptions = GetClientOptions(
+            data,
+            options,
+            capturedRequestHeaders is null ? null : capturedRequestHeaders.Add);
+        using var client = clientFactory(data.UseProxy ? data.Proxy : null, clientOptions, cookieContainer);
+
+        var requestVersion = Version.Parse(options.HttpVersion);
+        using var request = new HttpRequestMessage
+        {
+            Method = new System.Net.Http.HttpMethod(options.Method.ToString()),
+            RequestUri = new Uri(options.Url),
+            Version = requestVersion,
+            VersionPolicy = GetVersionPolicy(requestVersion)
+        };
+
+        foreach (var header in options.CustomHeaders)
+        {
+            request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        }
+
+        // Add the basic auth header
+        request.Headers.TryAddWithoutValidation("Authorization", "Basic " + Convert.ToBase64String(
+            Encoding.UTF8.GetBytes($"{options.Username}:{options.Password}")));
+
+        data.Logger.LogHeader();
+        LogReconstructedRequestIfNeeded(data, options, capturedRequestHeaders, request);
+
+        Activity.Current = null;
+        using var timeoutCts = new CancellationTokenSource(options.TimeoutMilliseconds);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(data.CancellationToken, timeoutCts.Token);
+        using var response = await SendAsync(
+            data,
+            client,
+            request,
+            options,
+            capturedRequestHeaders,
+            null,
+            null,
+            linkedCts.Token).ConfigureAwait(false);
+
+        await LogHttpResponseData(data, response, cookieContainer, options).ConfigureAwait(false);
+    }
+
+    public override async Task HttpRequestMultipart(BotData data, MultipartHttpRequestOptions options)
+    {
+        foreach (var cookie in options.CustomCookies)
+        {
+            data.COOKIES[cookie.Key] = cookie.Value;
+        }
+
+        var cookieContainer = new CookieContainer();
+
+        foreach (var cookie in data.COOKIES)
+        {
+            cookieContainer.Add(new Uri(options.Url), new Cookie(cookie.Key, cookie.Value));
+        }
+
+        var capturedRequestHeaders = CreateCurlRequestHeadersCapture(data, options);
+        var clientOptions = GetClientOptions(
+            data,
+            options,
+            capturedRequestHeaders is null ? null : capturedRequestHeaders.Add);
+        using var client = clientFactory(data.UseProxy ? data.Proxy : null, clientOptions, cookieContainer);
+
+        if (string.IsNullOrWhiteSpace(options.Boundary))
+        {
+            options.Boundary = GenerateMultipartBoundary();
+        }
+
+        // Rewrite the value of the Content-Type header otherwise it will add double quotes around it like
+        // Content-Type: multipart/form-data; boundary="------WebKitFormBoundaryewozmkbxwbblilpm"
+        var multipartContent = new MultipartFormDataContent(options.Boundary);
+        var boundaryParameter = multipartContent.Headers.ContentType?.Parameters
+            .FirstOrDefault(o => o.Name == "boundary");
+
+        if (boundaryParameter is not null)
+        {
+            boundaryParameter.Value = options.Boundary;
+        }
+
+        FileStream? fileStream = null;
+
+        foreach (var c in options.Contents)
+        {
+            switch (c)
+            {
+                case StringHttpContent x:
+                    multipartContent.Add(CreateMultipartContent(x), x.Name);
+                    break;
+
+                case RawHttpContent x:
+                    multipartContent.Add(CreateMultipartContent(x), x.Name);
+                    break;
+
+                case FileHttpContent x:
+                    lock (FileLocker.GetHandle(x.FileName))
+                    {
+                        if (data.Providers.Security.RestrictBlocksToCWD)
+                        {
+                            FileUtils.ThrowIfNotInCWD(x.FileName);
+                        }
+
+                        fileStream = new FileStream(x.FileName, FileMode.Open);
+                        var fileContent = CreateMultipartContent(x, fileStream);
+                        multipartContent.Add(fileContent, x.Name);
+                    }
+                    break;
+            }
+        }
+
+        var requestVersion = Version.Parse(options.HttpVersion);
+        using var request = new HttpRequestMessage
+        {
+            Method = new System.Net.Http.HttpMethod(options.Method.ToString()),
+            RequestUri = new Uri(options.Url),
+            Version = requestVersion,
+            VersionPolicy = GetVersionPolicy(requestVersion),
+            Content = multipartContent
+        };
+
+        foreach (var header in options.CustomHeaders)
+        {
+            request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        }
+
+        data.Logger.LogHeader();
+        var content = SerializeMultipart(options.Boundary, options.Contents);
+        LogReconstructedRequestIfNeeded(
+            data,
+            options,
+            capturedRequestHeaders,
+            request,
+            content,
+            options.Boundary);
+
+        try
+        {
+            Activity.Current = null;
+            using var timeoutCts = new CancellationTokenSource(options.TimeoutMilliseconds);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(data.CancellationToken, timeoutCts.Token);
+            using var response = await SendAsync(
+                data,
+                client,
+                request,
+                options,
+                capturedRequestHeaders,
+                content,
+                options.Boundary,
+                linkedCts.Token).ConfigureAwait(false);
+
+            await LogHttpResponseData(data, response, cookieContainer, options).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (fileStream is not null)
+            {
+                await fileStream.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static List<string>? CreateCurlRequestHeadersCapture(BotData data, Options.HttpRequestOptions options)
+        => ShouldCaptureCurlRequestHeaders(data, options) ? [] : null;
+
+    internal static bool ShouldCaptureCurlRequestHeaders(BotData data, Options.HttpRequestOptions options)
+        => data.BOTNUM == 0 && options.HttpLibrary == HttpLibrary.CurlImpersonate;
+
+    internal static HttpVersionPolicy GetVersionPolicy(Version requestedVersion)
+        => requestedVersion.Major >= 3
+            ? HttpVersionPolicy.RequestVersionExact
+            : HttpVersionPolicy.RequestVersionOrLower;
+
+    private static void LogReconstructedRequestIfNeeded(
+        BotData data,
+        Options.HttpRequestOptions options,
+        List<string>? capturedRequestHeaders,
+        HttpRequestMessage request,
+        string? content = null,
+        string? boundary = null)
+    {
+        if (capturedRequestHeaders is not null)
+        {
+            return;
+        }
+
+        LogHttpRequestData(data, request, content, boundary);
+        LogCurlImpersonateRequestLogNotice(data, options);
+    }
+
+    private static async Task<HttpResponseMessage> SendAsync(
+        BotData data,
+        HttpClient client,
+        HttpRequestMessage request,
+        Options.HttpRequestOptions options,
+        List<string>? capturedRequestHeaders,
+        string? content,
+        string? boundary,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await client.SendAsync(
+                request,
+                options.ReadResponseContent
+                    ? HttpCompletionOption.ResponseContentRead
+                    : HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (capturedRequestHeaders is not null)
+            {
+                LogCapturedCurlRequest(data, capturedRequestHeaders);
+                LogHttpRequestPayload(data, request, content, boundary);
+            }
+        }
+    }
+
+    private static void LogCapturedCurlRequest(BotData data, List<string> capturedRequestHeaders)
+    {
+        if (capturedRequestHeaders.Count == 0)
+        {
+            data.Logger.Log(
+                "[WARNING] curl-impersonate did not provide the outgoing request headers.",
+                LogColors.DarkOrange);
+            return;
+        }
+
+        for (var i = 0; i < capturedRequestHeaders.Count; i++)
+        {
+            if (i > 0)
+            {
+                data.Logger.Log($"Redirect {i}", LogColors.Beige);
+            }
+
+            data.Logger.Log(capturedRequestHeaders[i], LogColors.NonPhotoBlue);
+        }
+    }
+
+    private static void LogHttpRequestPayload(
+        BotData data,
+        HttpRequestMessage request,
+        string? content,
+        string? boundary)
+    {
+        if (request.Content is null || content is null)
+        {
+            return;
+        }
+
+        using var writer = new StringWriter();
+        writer.WriteLine("Sent Payload:");
+
+        if (request.Content is MultipartFormDataContent)
+        {
+            writer.WriteLine($"Boundary: {boundary}");
+        }
+
+        writer.WriteLine(content);
+        data.Logger.Log(writer.ToString(), LogColors.NonPhotoBlue);
+    }
+
+    private static void LogHttpRequestData(BotData data, HttpRequestMessage request,
+        string? content = null, string? boundary = null)
+    {
+        using var writer = new StringWriter();
+
+        // Log the method, uri and http version
+        var requestUri = request.RequestUri ?? throw new InvalidOperationException("Request URI cannot be null.");
+        writer.WriteLine($"{request.Method.Method} {requestUri.PathAndQuery} {FormatHttpVersion(request.Version)}");
+
+        // Log the headers
+        writer.WriteLine($"Host: {requestUri.Host}");
+
+        foreach (var header in request.Headers)
+        {
+            var separator = commaHeaders.Contains(header.Key) ? ", " : " ";
+            writer.WriteLine($"{header.Key}: {string.Join(separator, header.Value)}");
+        }
+
+        // Log the cookie header
+        var cookies = data.COOKIES.Select(c => $"{c.Key}={c.Value}");
+
+        if (cookies.Any())
+        {
+            writer.WriteLine($"Cookie: {string.Join("; ", cookies)}");
+        }
+
+        if (request.Content != null && content != null)
+        {
+            switch (request.Content)
+            {
+                case StringContent x:
+                    writer.WriteLine($"Content-Type: {x.Headers.ContentType}");
+                    writer.WriteLine($"Content-Length: {x.Headers.ContentLength}");
+                    writer.WriteLine();
+                    writer.WriteLine(content);
+                    break;
+
+                case ByteArrayContent x:
+                    writer.WriteLine($"Content-Type: {x.Headers.ContentType}");
+                    writer.WriteLine($"Content-Length: {x.Headers.ContentLength}");
+                    writer.WriteLine();
+                    writer.WriteLine(content);
+                    break;
+
+                case MultipartFormDataContent:
+                    writer.WriteLine($"Content-Type: multipart/form-data; boundary=\"{boundary}\"");
+                    writer.WriteLine("Content-Length: (not calculated)");
+                    writer.WriteLine();
+                    writer.WriteLine(content);
+                    break;
+            }
+        }
+
+        data.Logger.Log(writer.ToString(), LogColors.NonPhotoBlue);
+    }
+
+    private static void LogCurlImpersonateRequestLogNotice(BotData data, Options.HttpRequestOptions options)
+    {
+        if (options.HttpLibrary != HttpLibrary.CurlImpersonate)
+        {
+            return;
+        }
+
+        data.Logger.Log(
+            "[NOTE] The request headers shown above are reconstructed by OB2 and may not match the exact headers or order sent by curl-impersonate. Use a MITM proxy or packet capture when you need the real outgoing request.",
+            LogColors.DarkOrange);
+    }
+
+    private static async Task LogHttpResponseData(BotData data, HttpResponseMessage response,
+        CookieContainer cookieContainer, Options.HttpRequestOptions requestOptions)
+    {
+        if (requestOptions.ReadResponseContent)
+        {
+            var responseContent = response.Content;
+            data.RAWSOURCE = responseContent is null
+                ? []
+                : await responseContent.ReadAsByteArrayAsync(data.CancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            data.RAWSOURCE = [];
+        }
+
+        // Address
+        var responseUri = response.RequestMessage?.RequestUri
+            ?? throw new InvalidOperationException("Response request URI cannot be null.");
+        data.ADDRESS = responseUri.AbsoluteUri;
+        data.Logger.Log($"Address: {data.ADDRESS}", LogColors.DodgerBlue);
+
+        // Response code
+        data.RESPONSECODE = (int)response.StatusCode;
+        data.Logger.Log($"Response code: {data.RESPONSECODE}", LogColors.Citrine);
+        LogNegotiatedHttpVersion(data, Version.Parse(requestOptions.HttpVersion), response.Version);
+
+        data.HEADERS = response.Headers.ToDictionary(h => h.Key, GetHeaderValue);
+
+        if (response.Content != null)
+        {
+            foreach (var header in response.Content.Headers)
+            {
+                data.HEADERS[header.Key] = GetHeaderValue(header);
+            }
+        }
+
+        if (!data.HEADERS.ContainsKey("Content-Length"))
+        {
+            data.HEADERS["Content-Length"] = data.RAWSOURCE.Length.ToString();
+        }
+
+        data.Logger.Log("Received Headers:", LogColors.MediumPurple);
+        data.Logger.Log(data.HEADERS.Select(h => $"{h.Key}: {h.Value}"), LogColors.Violet);
+
+        // Cookies
+        var cookies = Http.GetAllCookies(cookieContainer);
+        data.COOKIES.Clear();
+        foreach (Cookie cookie in cookies)
+        {
+            data.COOKIES[cookie.Name] = cookie.Value;
+        }
+
+        // HttpClient has trouble with the Set-Cookie header https://github.com/dotnet/runtime/issues/20942
+        // so we will help it out...
+        foreach (var header in response.Headers)
+        {
+            if (header.Key.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase) ||
+                header.Key.Equals("Set-Cookie2", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var cookieHeader in header.Value)
+                {
+                    if (TryParseCookie(cookieHeader, out var cookieName, out var cookieValue) &&
+                        cookieName is not null && cookieValue is not null)
+                    {
+                        data.COOKIES[cookieName] = cookieValue;
+                    }
+                }
+            }
+        }
+
+        data.Logger.Log("Received Cookies:", LogColors.MikadoYellow);
+        data.Logger.Log(data.COOKIES.Select(h => $"{h.Key}: {h.Value}"), LogColors.Khaki);
+
+        // Decode the response if still compressed
+        if (data.RAWSOURCE.Length > 0 && data.HEADERS.TryGetValue("Content-Encoding", out var value)
+            && !string.IsNullOrWhiteSpace(value))
+        {
+            try
+            {
+                using var inputStream = new MemoryStream(data.RAWSOURCE);
+                using var outputStream = new MemoryStream();
+                using var decodedStream = ContentEncodingHelper.GetDecodedStream(inputStream, [value]);
+                decodedStream.CopyTo(outputStream);
+                data.RAWSOURCE = outputStream.ToArray();
+            }
+            catch (Exception ex)
+            {
+                data.Logger.Log($"[WARNING] Tried to decompress {value} but failed: {ex.Message}",
+                    LogColors.DarkOrange);
+            }
+        }
+
+        // Fallback for gzip bodies that still reach us compressed without a Content-Encoding header
+        if (data.RAWSOURCE.Length > 1 && data.RAWSOURCE[0] == 0x1F && data.RAWSOURCE[1] == 0x8B)
+        {
+            try
+            {
+                data.RAWSOURCE = GZip.Unzip(data.RAWSOURCE);
+            }
+            catch
+            {
+                data.Logger.Log("[WARNING] Tried to decompress gzip but failed", LogColors.DarkOrange);
+            }
+        }
+
+        // Source
+        if (!string.IsNullOrWhiteSpace(requestOptions.CodePagesEncoding))
+        {
+            var encoding = CodePagesEncodingProvider.Instance
+                .GetEncoding(requestOptions.CodePagesEncoding) ?? throw new NotSupportedException(
+                $"Encoding {requestOptions.CodePagesEncoding} is not supported");
+
+            data.SOURCE = encoding.GetString(data.RAWSOURCE);
+        }
+        else
+        {
+            data.SOURCE = Encoding.UTF8.GetString(data.RAWSOURCE);
+        }
+
+        if (requestOptions.DecodeHtml)
+        {
+            data.SOURCE = WebUtility.HtmlDecode(data.SOURCE);
+        }
+
+        data.Logger.Log("Received Payload:", LogColors.ForestGreen);
+        data.Logger.Log(data.SOURCE, LogColors.GreenYellow, true);
+
+        return;
+
+        static string GetHeaderValue(KeyValuePair<string, IEnumerable<string>> header)
+        {
+            var separator = commaHeaders.Contains(header.Key) ? ", " : " ";
+            return string.Join(separator, header.Value);
+        }
+    }
+
+    internal static bool TryParseCookie(string cookieHeader, out string? cookieName, out string? cookieValue)
+    {
+        cookieName = null;
+        cookieValue = null;
+
+        if (cookieHeader.Length == 0)
+        {
+            return false;
+        }
+
+        var endCookiePos = cookieHeader.IndexOf(';');
+        var separatorPos = cookieHeader.IndexOf('=');
+
+        if (separatorPos == -1 || endCookiePos != -1 && separatorPos > endCookiePos)
+        {
+            // Invalid cookie, simply don't add it
+            return false;
+        }
+
+        cookieName = cookieHeader[..separatorPos];
+        cookieValue = endCookiePos == -1
+            ? cookieHeader[(separatorPos + 1)..]
+            : cookieHeader.Substring(separatorPos + 1, endCookiePos - separatorPos - 1);
+
+        return true;
+    }
+}

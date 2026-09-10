@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: openbullet2
+    name: Test
     runtime: docker
     plan: free
     envVars:

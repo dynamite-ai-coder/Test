@@ -1,0 +1,63 @@
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble
+
+ARG RELEASE_TAG=latest
+ARG TARGETARCH
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install basic dependencies
+RUN apt-get update -yq \
+    && apt-get install -y --no-install-recommends \
+        apt-utils \
+        curl \
+        git \
+        nano \
+        wget \
+        unzip \
+        python3 \
+        python3-pip \
+        gnupg \
+        lsb-release \
+        software-properties-common
+
+# Setup Node.js (LTS Version)
+RUN curl -sL https://deb.nodesource.com/setup_lts.x | bash - \
+    && apt-get install -yq nodejs build-essential
+
+# Add Mozilla Team PPA for the latest Firefox
+RUN echo "deb http://ppa.launchpad.net/mozillateam/ppa/ubuntu focal main" | tee /etc/apt/sources.list.d/mozillateam-ppa.list \
+    && apt-key adv --keyserver keyserver.ubuntu.com --recv-keys A6DCF7707EBC211F \
+    && apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 9BDB3D89CE49EC21 \
+    && apt-get update -yq
+
+# Install the latest Firefox and Chromium
+RUN apt-get install -y --no-install-recommends \
+        firefox \
+        chromium
+
+# Install WebDriverManager
+RUN pip3 install webdrivermanager || true \
+    && webdrivermanager firefox chrome --linkpath /usr/local/bin || true
+
+# Clean up
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Download and unpack the requested OpenBullet2.Web release
+RUN case "$TARGETARCH" in \
+        amd64) WEB_ASSET="OpenBullet2.Web-linux-x64.zip" ;; \
+        arm64) WEB_ASSET="OpenBullet2.Web-linux-arm64.zip" ;; \
+        *) echo "Unsupported Linux architecture: $TARGETARCH" && exit 1 ;; \
+    esac \
+    && if [ "$RELEASE_TAG" = "latest" ]; then \
+        wget "https://github.com/openbullet/openbullet2/releases/latest/download/${WEB_ASSET}"; \
+    else \
+        wget "https://github.com/openbullet/openbullet2/releases/download/${RELEASE_TAG}/${WEB_ASSET}"; \
+    fi \
+    && unzip "$WEB_ASSET" \
+    && rm "$WEB_ASSET"
+
+EXPOSE 5000
+
+CMD ["./OpenBullet2.Web", "--urls=http://*:5000"]

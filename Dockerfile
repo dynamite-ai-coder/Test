@@ -4,15 +4,15 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS backend
 
 WORKDIR /code
-COPY OpenBullet2/ .
-RUN dotnet publish OpenBullet2.Web/OpenBullet2.Web.csproj -c Release -o /build/web
+COPY OpenBullet2/ ./OpenBullet2/
+RUN dotnet publish OpenBullet2/OpenBullet2.Web/OpenBullet2.Web.csproj -c Release -o /build/web
 
 # ---------------------
 # FRONTEND (Angular)
 # ---------------------
 FROM node:20 AS frontend
 
-WORKDIR /code
+WORKDIR /code/OpenBullet2/openbullet2-web-client
 COPY OpenBullet2/openbullet2-web-client/package.json .
 COPY OpenBullet2/openbullet2-web-client/package-lock.json .
 RUN npm ci
@@ -27,7 +27,6 @@ RUN mkdir /build && mv dist/* /build
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV ASPNETCORE_URLS=http://0.0.0.0:${PORT:-10000}
 
 WORKDIR /app
 

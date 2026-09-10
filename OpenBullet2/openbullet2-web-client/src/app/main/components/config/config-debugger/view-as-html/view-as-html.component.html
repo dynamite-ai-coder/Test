@@ -1,0 +1,34 @@
+<div class="container-fluid">
+    <div class="mb-3 d-flex align-items-center flex-wrap">
+        <button class="button button-secondary mr-2" *ngIf="!isJson"
+            [pTooltip]="showRawHtml ? 'Show HTML preview' : 'Show Raw HTML'"
+            (click)="toggleShowRawHtml()">
+            <fa-icon [fixedWidth]="true" [icon]="showRawHtml ? faEye : faCode"></fa-icon>
+        </button>
+        <button class="button button-secondary mr-2"
+            [pTooltip]="'Copy ' + (isJson ? 'JSON' : 'HTML')"
+            (click)="copySource()">
+            <fa-icon [fixedWidth]="true" [icon]="faCopy"></fa-icon>
+        </button>
+        <button class="button button-secondary"
+            [pTooltip]="'Download ' + (isJson ? 'JSON' : 'HTML')"
+            (click)="downloadSource()">
+            <fa-icon [fixedWidth]="true" [icon]="faDownload"></fa-icon>
+        </button>
+        <p-checkbox class="ml-3" *ngIf="isJson"
+            [(ngModel)]="prettyPrintJson"
+            [binary]="true"
+            inputId="prettyPrintJson"
+            label="Pretty print"
+            (onChange)="togglePrettyPrintJson()" />
+    </div>
+    <div class="source-container">
+        <div *ngIf="isJson">
+            <pre><code class="language-json" [innerHTML]="highlightedSource"></code></pre>
+        </div>
+        <div *ngIf="!isJson && showRawHtml">
+            <pre><code class="language-markup" [innerHTML]="highlightedSource"></code></pre>
+        </div>
+        <div *ngIf="!isJson && !showRawHtml" [innerHTML]="html | safeHtml"></div>
+    </div>
+</div>

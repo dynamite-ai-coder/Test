@@ -1,0 +1,41 @@
+name: Run tests
+
+on:
+  push:
+    branches:
+      - master
+      - staging
+  pull_request:
+    branches:
+      - master
+      - staging
+      
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    steps:
+    - uses: actions/checkout@v5
+    - name: Setup Python 3.12
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.12'
+    - name: Setup .NET 10
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: 10.0.x
+    - name: Fetch curl-impersonate native assets
+      run: dotnet run --project Tools/CurlImpersonate.NativeAssets -- --rid current
+    - name: Unit and integration tests
+      shell: pwsh
+      run: |
+        Get-ChildItem -Path . -Recurse -Filter *.Tests.csproj |
+          Where-Object { $_.FullName -notlike '*OpenBullet2.Native.Tests*' } |
+          ForEach-Object {
+            dotnet test $_.FullName
+          }

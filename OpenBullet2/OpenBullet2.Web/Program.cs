@@ -1,0 +1,372 @@
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ApiExplorer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using OpenBullet2.Core;
+using OpenBullet2.Core.Helpers;
+using OpenBullet2.Core.Options;
+using OpenBullet2.Core.Repositories;
+using OpenBullet2.Core.Services;
+using OpenBullet2.Web;
+using OpenBullet2.Web.Controllers;
+using OpenBullet2.Web.Exceptions;
+using OpenBullet2.Web.Interfaces;
+using OpenBullet2.Web.Mcp;
+using OpenBullet2.Web.Middleware;
+using OpenBullet2.Web.Options;
+using OpenBullet2.Web.Services;
+using OpenBullet2.Web.SignalR;
+using OpenBullet2.Web.Utils;
+using RuriLib.Helpers;
+using RuriLib.Logging;
+using RuriLib.Providers.RandomNumbers;
+using RuriLib.Providers.UserAgents;
+using RuriLib.Services;
+using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using FluentValidation;
+using Mapster;
+using Microsoft.OpenApi;
+using ModelContextProtocol.AspNetCore;
+using OpenBullet2.Core.Models.Proxies;
+using Serilog;
+using Serilog.Exceptions;
+using Serilog.Formatting.Compact;
+using Serilog.Settings.Configuration;
+using Serilog.Sinks.SystemConsole;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services
+    .AddOptions<UserDataSettingsOptions>()
+    .Bind(builder.Configuration.GetSection(UserDataSettingsOptions.SectionName));
+builder.Services
+    .AddOptions<WebSettingsOptions>()
+    .Bind(builder.Configuration.GetSection(UserDataSettingsOptions.SectionName));
+builder.Services.AddSingleton<UserDataDirectoryProvider>();
+
+// Configuration tweaks
+var workerThreads = builder.Configuration.GetSection("Resources").GetValue("WorkerThreads", 1000);
+var ioThreads = builder.Configuration.GetSection("Resources").GetValue("IOThreads", 1000);
+
+ThreadPool.SetMinThreads(workerThreads, ioThreads);
+
+builder.Services.Configure<FormOptions>(x =>
+{
+    x.MultipartBodyLengthLimit = long.MaxValue;
+});
+
+// Add services to the container.
+
+builder.Services.AddApiVersioning(options =>
+{
+    options.AssumeDefaultVersionWhenUnspecified = true;
+    options.DefaultApiVersion = new ApiVersion(1, 0);
+    options.ReportApiVersions = true;
+});
+
+builder.Services.AddControllers()
+    .AddJsonOptions(opts =>
+    {
+        var enumConverter = new JsonStringEnumConverter(JsonNamingPolicy.CamelCase);
+        opts.JsonSerializerOptions.Converters.Add(enumConverter);
+    });
+
+builder.Services.AddRouting(options => options.LowercaseUrls = true);
+
+builder.Services.AddSignalR()
+    .AddJsonProtocol(options =>
+    {
+        options.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        var enumConverter = new JsonStringEnumConverter(JsonNamingPolicy.CamelCase);
+        options.PayloadSerializerOptions.Converters.Add(enumConverter);
+    });
+
+// Swagger with versioning implemented according to this guide
+// https://referbruv.com/blog/integrating-aspnet-core-api-versions-with-swagger-ui/
+builder.Services.AddVersionedApiExplorer(setup =>
+{
+    setup.GroupNameFormat = "'v'VVV";
+    setup.SubstituteApiVersionInUrl = true;
+});
+builder.Services.AddSwaggerGen(c =>
+{
+    c.AddSecurityDefinition("Api Key", new OpenApiSecurityScheme
+    {
+        Description = "Enter the API key you configured in OB Settings > Security > Admin API Key",
+        Name = "X-Api-Key",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "ApiKeyScheme"
+    });
+
+    c.AddSecurityRequirement(_ => new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecuritySchemeReference("Api Key", null!, null!),
+            []
+        }
+    });
+});
+builder.Services.ConfigureOptions<ConfigureSwaggerOptions>();
+
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection") ?? string.Empty,
+        b => b.MigrationsAssembly("OpenBullet2.Core")));
+
+builder.Services.AddSingleton(_ => WebMapperConfig.Create());
+builder.Services.AddScoped<IObjectMapper, MapsterObjectMapper>();
+
+builder.Host.UseSerilog((context, configuration) =>
+    configuration.ReadFrom.Configuration(
+        context.Configuration,
+        new ConfigurationReaderOptions(
+            typeof(ConsoleLoggerConfigurationExtensions).Assembly,
+            typeof(FileLoggerConfigurationExtensions).Assembly,
+            typeof(LoggerEnrichmentConfigurationExtensions).Assembly,
+            typeof(CompactJsonFormatter).Assembly)));
+
+builder.Services.AddValidatorsFromAssemblyContaining<Program>(includeInternalTypes: true);
+builder.Services.AddMcpServer()
+    .WithHttpTransport(options =>
+    {
+        options.Stateless = true;
+    })
+    .WithTools<ServerInfoMcpTools>()
+    .WithTools<EnvironmentMcpTools>()
+    .WithTools<ConfigMcpTools>()
+    .WithTools<ConfigMakingMcpTools>()
+    .WithTools<ConfigMakingDocsMcpTools>()
+    .WithTools<ConfigDebugMcpTools>()
+    .WithTools<BlockReferenceMcpTools>()
+    .WithTools<SettingsMcpTools>();
+
+// Scoped
+builder.Services.AddScoped<IProxyRepository, DbProxyRepository>();
+builder.Services.AddScoped<IProxyGroupRepository, DbProxyGroupRepository>();
+builder.Services.AddScoped<IHitRepository, DbHitRepository>();
+builder.Services.AddScoped<IJobRepository, DbJobRepository>();
+builder.Services.AddScoped<IGuestRepository, DbGuestRepository>();
+builder.Services.AddScoped<IRecordRepository, DbRecordRepository>();
+builder.Services.AddScoped<IWordlistRepository>(service =>
+    new HybridWordlistRepository(
+        service.GetRequiredService<ApplicationDbContext>(),
+        service.GetRequiredService<UserDataDirectoryProvider>().GetPath("Wordlists")));
+
+builder.Services.AddScoped<DataPoolFactoryService>();
+builder.Services.AddScoped<ProxySourceFactoryService>();
+
+// Singleton
+builder.Services.AddSingleton<IAuthTokenService, AuthTokenService>();
+builder.Services.AddSingleton<IAnnouncementService, AnnouncementService>();
+builder.Services.AddSingleton<IUpdateService, UpdateService>();
+builder.Services.AddSingleton<PerformanceMonitorService>();
+builder.Services.AddSingleton<IConfigRepository>(service =>
+    new DiskConfigRepository(
+        service.GetRequiredService<RuriLibSettingsService>(),
+        service.GetRequiredService<UserDataDirectoryProvider>().GetPath("Configs"),
+        service.GetRequiredService<ILogger<DiskConfigRepository>>()));
+builder.Services.AddSingleton<ConfigService>();
+builder.Services.AddSingleton(service =>
+    new ConfigSharingService(service.GetRequiredService<IConfigRepository>(),
+        service.GetRequiredService<ILogger<ConfigSharingService>>(),
+        service.GetRequiredService<UserDataDirectoryProvider>().RootPath));
+builder.Services.AddSingleton<ProxyReloadService>();
+builder.Services.AddSingleton<JobFactoryService>();
+builder.Services.AddSingleton<ProxyCheckOutputFactory>();
+builder.Services.AddSingleton<TriggeredActionExecutor>();
+builder.Services.AddSingleton<JobManagerService>();
+builder.Services.AddSingleton(service =>
+    new JobMonitorService(service.GetRequiredService<JobManagerService>(),
+        service.GetRequiredService<TriggeredActionExecutor>(),
+        service.GetRequiredService<ILogger<JobMonitorService>>(),
+        service.GetRequiredService<UserDataDirectoryProvider>().GetPath("triggeredActions.json"), false));
+builder.Services.AddSingleton<HitStorageService>();
+builder.Services.AddSingleton(service =>
+    new RuriLibSettingsService(service.GetRequiredService<UserDataDirectoryProvider>().RootPath));
+builder.Services.AddSingleton(service =>
+    new OpenBulletSettingsService(service.GetRequiredService<UserDataDirectoryProvider>().RootPath));
+builder.Services.AddSingleton(service => new PluginRepository(
+    service.GetRequiredService<UserDataDirectoryProvider>().GetPath("Plugins"),
+    service.GetRequiredService<ILogger<PluginRepository>>()));
+builder.Services.AddSingleton(service =>
+    new ThemeService(service.GetRequiredService<UserDataDirectoryProvider>().GetPath("Themes")));
+builder.Services.AddSingleton<IRandomUAProvider>(
+    _ => new IntoliRandomUAProvider("user-agents.json"));
+builder.Services.AddSingleton<IRNGProvider, DefaultRNGProvider>();
+builder.Services.AddSingleton<IJobLogger>(service =>
+    new FileJobLogger(service.GetRequiredService<RuriLibSettingsService>(),
+        service.GetRequiredService<UserDataDirectoryProvider>().GetPath("Logs", "Jobs")));
+builder.Services.AddSingleton<ConfigDebuggerService>();
+builder.Services.AddSingleton<ProxyCheckJobService>();
+builder.Services.AddSingleton<MultiRunJobService>();
+builder.Services.AddSingleton<LoliCodeAutocompletionService>();
+
+// HttpClient
+builder.Services.AddSingleton<IChangelogService, ChangelogService>();
+builder.Services.AddHttpClient<ProxyController>(client =>
+{
+    client.DefaultRequestHeaders.UserAgent.ParseAdd(Globals.UserAgent);
+});
+builder.Services.AddHttpClient<ConfigController>(client =>
+{
+    client.DefaultRequestHeaders.UserAgent.ParseAdd(Globals.UserAgent);
+});
+
+// Hosted Services
+builder.Services.AddHostedService(
+    b => b.GetRequiredService<IUpdateService>());
+builder.Services.AddHostedService(
+    b => b.GetRequiredService<PerformanceMonitorService>());
+
+var app = builder.Build();
+
+var versionDescriptionProvider = app.Services.GetRequiredService<IApiVersionDescriptionProvider>();
+var webSettings = app.Services.GetRequiredService<IOptions<WebSettingsOptions>>().Value;
+
+app.UseSwagger();
+app.UseSwaggerUI(options =>
+{
+    foreach (var groupName in versionDescriptionProvider.ApiVersionDescriptions
+                 .Select(description => description.GroupName))
+    {
+        options.SwaggerEndpoint(
+            $"/swagger/{groupName}/swagger.json",
+            groupName.ToUpperInvariant());
+    }
+});
+
+app.UseCors(o => o
+    .AllowAnyHeader()
+    .AllowAnyMethod()
+    .AllowCredentials() // Needed for SignalR (it uses sticky cookie-based sessions for reconnection)
+    .WithOrigins(webSettings.AllowedOrigin)
+    .WithExposedHeaders("Content-Disposition", "X-Application-Warning", "X-New-Jwt")
+);
+
+app.UseMiddleware<ExceptionMiddleware>();
+app.UseMiddleware<AuthTokenVerificationMiddleware>();
+app.UseMiddleware<McpAuthorizationMiddleware>();
+
+app.UseRouting();
+
+app.UseAuthorization();
+
+app.MapControllers();
+app.MapMcp("/mcp");
+
+app.MapHub<ConfigDebuggerHub>("hubs/config-debugger", options =>
+{
+    // Incoming messages <= 1 MB
+    options.ApplicationMaxBufferSize = 1_000_000;
+
+    // Outgoing messages <= 10 MB
+    options.TransportMaxBufferSize = 10_000_000;
+});
+
+app.MapHub<ProxyCheckJobHub>("hubs/proxy-check-job", options =>
+{
+    // Incoming messages <= 1 MB
+    options.ApplicationMaxBufferSize = 1_000_000;
+
+    // Outgoing messages <= 10 MB
+    options.TransportMaxBufferSize = 10_000_000;
+});
+
+app.MapHub<MultiRunJobHub>("hubs/multi-run-job", options =>
+{
+    // Incoming messages <= 1 MB
+    options.ApplicationMaxBufferSize = 1_000_000;
+
+    // Outgoing messages <= 10 MB
+    options.TransportMaxBufferSize = 10_000_000;
+});
+
+app.MapHub<SystemPerformanceHub>("hubs/system-performance");
+
+app.UseDefaultFiles();
+app.UseStaticFiles();
+app.MapFallbackToController(
+    nameof(FallbackController.Index),
+    nameof(FallbackController).Replace("Controller", "")
+);
+
+var obSettings = app.Services.GetRequiredService<OpenBulletSettingsService>().Settings;
+var updateService = app.Services.GetRequiredService<IUpdateService>();
+
+Console.ForegroundColor = ConsoleColor.White;
+Console.WriteLine($"""
+                     ____                   ____        ____     __     ___ 
+                    / __ \____  ___  ____  / __ )__  __/ / /__  / /_   |__ \
+                   / / / / __ \/ _ \/ __ \/ __  / / / / / / _ \/ __/   __/ /
+                  / /_/ / /_/ /  __/ / / / /_/ / /_/ / / /  __/ /_    / __/ 
+                  \____/ .___/\___/_/ /_/_____/\__,_/_/_/\___/\__/   /____/ 
+                      /_/                                                                               
+                      
+                  v{updateService.CurrentVersion}
+                  """);
+Console.ForegroundColor = ConsoleColor.Red;
+Console.WriteLine("""
+                  
+                  ----------
+                  DISCLAIMER
+                  ----------
+                  Performing attacks on sites you do not own (or you do not have permission to test) is illegal!
+                  The developer will not be held responsible for improper use of this software.
+                  
+                  """);
+
+Console.ForegroundColor = ConsoleColor.White;
+if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+{
+    Console.WriteLine($"DO NOT CLOSE THIS WINDOW{Environment.NewLine}");
+}
+
+if (RootChecker.IsRoot())
+{
+    Console.WriteLine(RootUtils.RootWarning);
+}
+
+if (obSettings.SecuritySettings.HttpsRedirect)
+{
+    app.UseHttpsRedirection();
+}
+
+// Cache the polymorphic types
+PolyDtoCache.Scan();
+
+// Apply DB migrations or create a DB if it doesn't exist
+using (var serviceScope = app.Services.GetRequiredService<IServiceScopeFactory>().CreateScope())
+{
+    var context = serviceScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await context.Database.MigrateAsync();
+}
+
+// Load the configs
+var configService = app.Services.GetRequiredService<ConfigService>();
+await configService.ReloadConfigsAsync();
+
+// Register the block snippets
+var autocompletionProvider = app.Services.GetRequiredService<LoliCodeAutocompletionService>();
+autocompletionProvider.Init();
+
+// Start the job monitor at the start of the application,
+// otherwise it will only be started when navigating to the page
+_ = app.Services.GetRequiredService<JobMonitorService>();
+
+Globals.StartTime = DateTime.UtcNow;
+
+await app.RunAsync();
+
+// This makes Program visible for integration tests
+#pragma warning disable S1118
+/// <summary>
+/// The main entry point for the application.
+/// </summary>
+public partial class Program
+{
+}
+#pragma warning restore S1118

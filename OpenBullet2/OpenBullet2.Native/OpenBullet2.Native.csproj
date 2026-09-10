@@ -1,0 +1,177 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net10.0-windows</TargetFramework>
+        <EnableWindowsTargeting>true</EnableWindowsTargeting>
+        <UseWPF>true</UseWPF>
+        <ApplicationIcon>logo.ico</ApplicationIcon>
+        <DebugType>none</DebugType>
+        <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    </PropertyGroup>
+    
+    <PropertyGroup>
+        <DisableBeauty>False</DisableBeauty>
+        <BeautySharedRuntimeMode>False</BeautySharedRuntimeMode>
+        <BeautyOnPublishOnly>True</BeautyOnPublishOnly>
+        <BeautyNoRuntimeInfo>False</BeautyNoRuntimeInfo>
+        <BeautyUsePatch>True</BeautyUsePatch>
+        <BeautyLogLevel>Info</BeautyLogLevel>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Remove="appsettings.json"/>
+        <None Remove="Images\cider.gif"/>
+        <None Remove="Images\fairy.gif"/>
+        <None Remove="Images\ffaez.gif"/>
+        <None Remove="Images\james.gif"/>
+        <None Remove="Images\laiteux.gif"/>
+        <None Remove="Images\logohq.png"/>
+        <None Remove="Images\logohq_square_padded.png"/>
+        <None Remove="Images\logohq_square_padded_bg.png"/>
+        <None Remove="Images\mastercho.gif"/>
+        <None Remove="Images\meinname.gif"/>
+        <None Remove="Images\sjw.gif"/>
+        <None Remove="Images\thefiendqq.gif"/>
+        <None Remove="Sounds\hit.wav"/>
+        <None Remove="user-agents.json"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Content Include="appsettings.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        </Content>
+        <Content Include="Images\cider.gif">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Images\fairy.gif">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Images\ffaez.gif">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Images\james.gif">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Images\laiteux.gif">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Images\mastercho.gif">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Images\meinname.gif">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Images\thefiendqq.gif">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Sounds\hit.wav">
+            <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="user-agents.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        </Content>
+        <Content Include="Images\logohq.png">
+            <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Resource Include="Images\logohq_square_padded.png" />
+        <Content Include="Images\logohq_square_padded_bg.png">
+            <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Images\sjw.gif">
+            <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="AvalonEdit" Version="6.3.1.120" />
+        <PackageReference Include="HtmlSanitizer" Version="8.1.866-beta" />
+        <PackageReference Include="MahApps.Metro" Version="2.4.11" />
+        <PackageReference Include="MahApps.Metro.IconPacks" Version="6.2.1" />
+        <PackageReference Include="MahApps.Metro.SimpleChildWindow" Version="2.2.1" />
+        <PackageReference Include="Markdig" Version="1.1.3" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.7"/>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.7">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.7"/>
+        <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.7"/>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.7"/>
+        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.7"/>
+        <PackageReference Include="nulastudio.NetBeauty" Version="2.1.5"/>
+        <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
+        <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+        <PackageReference Include="Serilog.Exceptions" Version="8.4.0" />
+        <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
+        <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.0" />
+        <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+        <PackageReference Include="WpfAnimatedGif" Version="2.0.2"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-j92c-7v7g-gj3f" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\OpenBullet2.Core\OpenBullet2.Core.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="..\CHANGELOG.md" LogicalName="OpenBullet2.Changelog.md" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(RuntimeIdentifier)' != ''">
+        <CurlImpersonateNativeAsset Include="..\RuriLib.Http\runtimes\$(RuntimeIdentifier)\native\**\*" />
+        <Content Include="@(CurlImpersonateNativeAsset)"
+                 CopyToOutputDirectory="PreserveNewest"
+                 CopyToPublishDirectory="PreserveNewest"
+                 ExcludeFromSingleFile="true"
+                 TargetPath="runtimes\$(RuntimeIdentifier)\native\%(RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
+
+    <Target Name="EnsureCurlImpersonateNativeAssets" BeforeTargets="Publish"
+            Condition="'$(RuntimeIdentifier)' != '' and '@(CurlImpersonateNativeAsset)' == ''">
+        <Error Text="curl-impersonate native assets for $(RuntimeIdentifier) were not found. Run 'dotnet run --project Tools/CurlImpersonate.NativeAssets -- --rid $(RuntimeIdentifier)' before publishing." />
+    </Target>
+
+    <ItemGroup>
+        <None Update="dbip-country-lite.mmdb">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Update="Highlighting\CSharp.xshd">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Update="Highlighting\JavaScript.xshd">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Update="Highlighting\LoliCode.xshd">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Update="Highlighting\LoliScript.xshd">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Update="Highlighting\MarkDown.xshd">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Update="Highlighting\Python.xshd">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Update="version.txt">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
+
+</Project>
