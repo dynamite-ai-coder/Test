@@ -1,0 +1,15 @@
+Create a simple deployable project based on OpenBullet2.Web for Render.
+
+Requirements:
+
+- Use ASP.NET Core.
+- The application must listen on "0.0.0.0:$PORT" instead of "127.0.0.1:5000".
+- Make it compatible with Render Web Services.
+- Add a proper "Dockerfile" and "render.yaml".
+- Keep the existing OpenBullet2 Web functionality and UI.
+- Do not use ngrok.
+- The final application must be accessible through:
+  "https://<service-name>.onrender.com"
+- Make sure the app starts correctly on Render using the PORT environment variable.
+- Include a short README with local and Render deployment instructions.
+- Test the project locally before finishing and fix any build/startup errors.
