@@ -13,6 +13,7 @@ import { UserService } from './services/user.service';
 export class MainComponent implements OnInit {
   updateInfo: UpdateInfoDto | null = null;
   sidebarVisible = true;
+  isMobile = false;
   faCaretLeft = faCaretLeft;
   faCaretRight = faCaretRight;
   faExclamationTriangle = faExclamationTriangle;
@@ -26,6 +27,11 @@ export class MainComponent implements OnInit {
   ) { }
 
   ngOnInit(): void {
+    this.isMobile = window.innerWidth <= 992;
+    if (this.isMobile) {
+      this.sidebarVisible = false;
+    }
+
     if (window.location.pathname === '/') {
       this.router.navigate(['home']);
       return;

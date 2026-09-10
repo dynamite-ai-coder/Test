@@ -27,3 +27,28 @@
     font-size: 16px;
     color: var(--fg-inactive);
 }
+
+@media (max-width: 768px) {
+    .info-label {
+        font-size: 13px;
+    }
+
+    .info {
+        font-size: 15px;
+    }
+
+    .collection-item-value {
+        font-size: 18px;
+    }
+
+    .collection-item-label {
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 576px) {
+    .info {
+        font-size: 14px;
+        word-break: break-all;
+    }
+}

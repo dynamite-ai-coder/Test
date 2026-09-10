@@ -18,6 +18,24 @@
     }
 }
 
+@media (max-width: 576px) {
+    .login-container {
+        padding: 1.5rem !important;
+
+        .login-logo {
+            margin-bottom: 1rem !important;
+        }
+
+        .logo {
+            max-width: 150px;
+        }
+    }
+
+    .login-button {
+        width: 100%;
+    }
+}
+
 .logo {
     max-width: 200px;
 }

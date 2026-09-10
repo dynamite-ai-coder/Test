@@ -483,3 +483,56 @@ p-accordiontab {
 .editor-debugger-splitter.p-splitter .p-splitter-gutter .p-splitter-gutter-handle:focus-visible {
     box-shadow: 0 0 0 1px var(--fg-accent-light) !important;
 }
+
+/* Mobile overrides for dialogs and components */
+@media (max-width: 768px) {
+    .p-dialog {
+        width: 95vw !important;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .p-dialog .p-dialog-content {
+        max-height: calc(90vh - 60px);
+        overflow-y: auto;
+    }
+
+    p-confirmDialog .p-confirm-dialog {
+        width: 95vw !important;
+    }
+
+    .p-confirmDialog {
+        width: 95vw !important;
+    }
+
+    .p-menubar .p-menubar-root-list > .p-menuitem > .p-menuitem-link {
+        padding: 0.2rem !important;
+        font-size: 12px !important;
+    }
+
+    .p-datatable .p-datatable-thead > tr > th {
+        font-size: 12px !important;
+        padding: 0.3rem 0.5rem !important;
+    }
+
+    .p-datatable .p-datatable-tbody > tr > td {
+        font-size: 12px !important;
+        padding: 0.3rem 0.5rem !important;
+    }
+
+    .p-dropdown {
+        font-size: 12px !important;
+    }
+
+    .p-dropdown:not(:has(.input-small)) {
+        height: 35px !important;
+    }
+
+    .p-card-body {
+        padding: 0.7rem !important;
+    }
+
+    .editor-debugger-splitter.p-splitter-horizontal > .p-splitter-panel {
+        min-width: 200px;
+    }
+}

@@ -438,3 +438,71 @@ app-changelog, .readme, .announcement {
     scrollbar-width: thin;
     scrollbar-color: var(--fg-inactive) var(--bg-secondary);
 }
+
+/* Mobile overrides */
+@media (max-width: 768px) {
+    .button {
+        padding: 4px 8px;
+        font-size: 12px;
+    }
+
+    code {
+        font-size: 12px !important;
+    }
+
+    code * {
+        font-size: 12px !important;
+    }
+
+    .input-small:not(textarea, app-input-dictionary, app-input-list) {
+        font-size: 12px;
+        height: 24px;
+        line-height: 8px;
+    }
+
+    .no-paddings .row .col,
+    .no-paddings .row .col-1,
+    .no-paddings .row .col-2,
+    .no-paddings .row .col-3,
+    .no-paddings .row .col-4,
+    .no-paddings .row .col-6,
+    .no-paddings .row .col-12 {
+        padding: 0 2px;
+    }
+
+    h1 {
+        font-size: 1.4rem;
+    }
+
+    h3 {
+        font-size: 1.1rem;
+    }
+
+    h5 {
+        font-size: 0.9rem;
+    }
+
+    h6 {
+        font-size: 0.85rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .button {
+        padding: 3px 6px;
+        font-size: 11px;
+    }
+
+    .p-datatable-wrapper {
+        font-size: 12px;
+    }
+
+    .p-datatable-tbody > tr > td,
+    .p-datatable-thead > tr > th {
+        padding: 0.3rem 0.5rem !important;
+    }
+
+    .p-paginator {
+        font-size: 12px;
+    }
+}

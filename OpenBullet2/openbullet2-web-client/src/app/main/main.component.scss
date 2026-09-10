@@ -8,6 +8,22 @@ $sidebarHandleWidth: 26px;
     min-height: 100vh;
     position: relative;
 
+    .sidebar-backdrop {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        z-index: 99;
+        cursor: pointer;
+
+        &.visible {
+            display: block;
+        }
+    }
+
     .sidebar {
         background-color: var(--bg-secondary);
         width: $sidebarWidth;
@@ -81,7 +97,7 @@ $sidebarHandleWidth: 26px;
         color: var(--fg-inactive);
         line-height: 48px;
         text-align: center;
-        z-index: 2;
+        z-index: 101;
         transition: left 0.2s ease, color 0.2s ease;
 
         &:hover {
@@ -103,5 +119,46 @@ $sidebarHandleWidth: 26px;
         .sidebar-handle {
             left: 0;
         }
+    }
+}
+
+@media (max-width: 992px) {
+    .wrapper {
+        .sidebar-backdrop.visible {
+            display: block;
+        }
+
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100%;
+            z-index: 100;
+            box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .sidebar.sidebar-hidden {
+            margin-left: -$sidebarWidth;
+        }
+
+        .sidebar-handle {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            transform: none;
+            width: 40px;
+            height: 40px;
+            line-height: 40px;
+            border-radius: 8px;
+            z-index: 102;
+        }
+
+        .content {
+            padding: 60px 20px 20px 20px;
+        }
+    }
+
+    .wrapper.sidebar-collapsed .sidebar-handle {
+        left: 10px;
     }
 }

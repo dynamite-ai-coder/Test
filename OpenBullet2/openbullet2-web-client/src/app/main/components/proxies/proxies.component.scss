@@ -1,0 +1,15 @@
+@import "../../../../styles/variables.scss";
+
+@media (max-width: 768px) {
+    .proxy-filters {
+        .w-100-mobile {
+            width: 100% !important;
+            margin-bottom: 8px;
+        }
+
+        .mobile-buttons {
+            text-align: left !important;
+            margin-top: 4px;
+        }
+    }
+}

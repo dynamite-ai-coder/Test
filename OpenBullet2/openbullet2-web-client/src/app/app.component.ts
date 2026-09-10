@@ -13,6 +13,7 @@ import { Router } from '@angular/router';
 })
 export class AppComponent {
   title = 'OpenBullet 2';
+  isMobile = window.innerWidth <= 768;
 
   faExclamationTriangle = faExclamationTriangle;
 

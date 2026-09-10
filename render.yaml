@@ -1,14 +1,10 @@
 services:
   - type: web
-    name: Test
+    name: OpenBullet2
     runtime: docker
     plan: free
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
-      - key: PORT
-        value: 10000
     healthCheckPath: /
     autoDeploy: true
-
-apiKey: rnd_hrT1CEhl7uCxLYzsr30DJGfUvWAH

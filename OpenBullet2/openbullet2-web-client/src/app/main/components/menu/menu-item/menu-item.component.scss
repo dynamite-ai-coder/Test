@@ -32,3 +32,20 @@
         margin-left: 29px;
     }
 }
+
+@media (max-width: 992px) {
+    .menu-item {
+        width: 170px;
+        margin: 10px 0px 10px 20px;
+        padding: 0px 0px 0px 10px;
+
+        .menu-item-label {
+            font-size: 14px;
+        }
+
+        &:not(.selected):hover,
+        &.selected {
+            margin-left: 29px;
+        }
+    }
+}

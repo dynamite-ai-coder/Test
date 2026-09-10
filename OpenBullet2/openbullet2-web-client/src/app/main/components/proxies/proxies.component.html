@@ -55,11 +55,11 @@
             </p-menubar>
         </div>
     </div>
-    <div class="row my-3">
-        <div class="col-8 pl-0">
+    <div class="row my-3 proxy-filters">
+        <div class="col-12 col-md-8 pl-0 mb-2 mb-md-0">
             <input id="searchTerm" type="text" pInputText
                 spellcheck="false"
-                class="mr-2"
+                class="mr-2 w-100-mobile"
                 [(ngModel)]="searchTerm"
                 (keydown)="searchBoxKeyDown($event)"
                 placeholder="Search..." />
@@ -99,7 +99,7 @@
                 </ng-template>
             </p-dropdown>
         </div>
-        <div class="col-4 pr-0 text-right">
+        <div class="col-12 col-md-4 pr-0 text-right mobile-buttons">
             <button class="button button-secondary mr-2" [style]="{ height: '41px'}"
                 pTooltip="Clear all filters"
                 (click)="clearFilters()">

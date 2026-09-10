@@ -26,3 +26,14 @@
         width: 0px;
     }
 }
+
+@media (max-width: 768px) {
+    .job-actions {
+        width: 120px;
+    }
+
+    .job-chip {
+        font-size: 8px;
+        padding: 2px 6px;
+    }
+}

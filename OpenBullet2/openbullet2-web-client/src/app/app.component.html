@@ -18,7 +18,7 @@
     </ng-template>
 </p-toast>
 <p-confirmDialog 
-    [style]="{width: '25vw'}"
+    [style]="{width: isMobile ? '95vw' : '25vw'}"
     [dismissableMask]="true"
     [closeOnEscape]="true">
 </p-confirmDialog>

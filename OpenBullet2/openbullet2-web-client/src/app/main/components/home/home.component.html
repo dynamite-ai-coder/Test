@@ -33,8 +33,8 @@
 <!-- Collection -->
 <h6 class="mx-3 mt-4">Your collection</h6>
 <div class="container-fluid mt-4">
-    <div *ngIf="collectionInfo !== null" class="row">
-        <div class="col">
+    <div *ngIf="collectionInfo !== null" class="row collection-row">
+        <div class="col col-mobile-3">
             <div class="collection-item-value">
                 {{collectionInfo.jobsCount | number}}
             </div>
@@ -42,7 +42,7 @@
                 Jobs
             </div>
         </div>
-        <div class="col">
+        <div class="col col-mobile-3">
             <div class="collection-item-value">
                 {{collectionInfo.proxiesCount | number}}
             </div>
@@ -50,7 +50,7 @@
                 Proxies
             </div>
         </div>
-        <div class="col">
+        <div class="col col-mobile-3">
             <div class="collection-item-value">
                 {{collectionInfo.wordlistsCount | number}}
             </div>
@@ -58,7 +58,7 @@
                 Wordlists
             </div>
         </div>
-        <div class="col">
+        <div class="col col-mobile-3">
             <div class="collection-item-value">
                 {{collectionInfo.wordlistsLines | number}}
             </div>
@@ -66,7 +66,7 @@
                 Lines
             </div>
         </div>
-        <div class="col">
+        <div class="col col-mobile-3">
             <div class="collection-item-value">
                 {{collectionInfo.hitsCount | number}}
             </div>
@@ -74,7 +74,7 @@
                 Hits
             </div>
         </div>
-        <div class="col">
+        <div class="col col-mobile-3">
             <div class="collection-item-value">
                 {{collectionInfo.configsCount | number}}
             </div>
@@ -82,7 +82,7 @@
                 Configs
             </div>
         </div>
-        <div class="col">
+        <div class="col col-mobile-3">
             <div class="collection-item-value">
                 {{collectionInfo.guestsCount | number}}
             </div>
@@ -90,7 +90,7 @@
                 Guests
             </div>
         </div>
-        <div class="col">
+        <div class="col col-mobile-3">
             <div class="collection-item-value">
                 {{collectionInfo.pluginsCount | number}}
             </div>
