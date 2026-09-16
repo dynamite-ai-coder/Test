@@ -39,6 +39,11 @@ COPY --from=frontend /build ./wwwroot
 # Ensure the mmdb file is present (it should be copied by dotnet publish, but this is a safeguard)
 COPY OpenBullet2/OpenBullet2.Web/dbip-country-lite.mmdb .
 
+# Node.js 20 LTS is required by the Script block with the NodeJS interpreter
+# (Jering.Javascript.NodeJS spawns the "node" process from PATH; Node 22+ is unstable here)
+COPY --from=node:20.9.0 /usr/local/bin/node /usr/local/bin/node
+RUN node --version
+
 EXPOSE 10000
 
 # Use CMD to allow Render to inject the PORT environment variable
